@@ -1,0 +1,21 @@
+Dataset Preparation
+- AlignmentDataset prepare dataset function
+- __getitem__
+- __len__
+
+BinaryAlignment
+- XLM-R integration
+
+NER Annotation Projection
+- use alignments to project labels onto new dataset
+    - span-level alignment -> how will this be done for erroneous labels? Is there a way the algorithm can account for such cases?
+
+Evaluation
+- use the parallel corpora for csit to evaluate ner scores
+- f1 score? 
+- AER?
+
+Documentation
+- Organise better
+    - main folder readme to just contain title, description, author, citations
+    - inner folder readme to contain more explanations on how the code works
