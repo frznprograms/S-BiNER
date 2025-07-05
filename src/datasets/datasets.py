@@ -1,13 +1,16 @@
 import itertools
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import torch
 from loguru import logger
 from tqdm import tqdm
+from transformers import XLMRobertaTokenizerFast
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 from configs.pipeline_configs import PipelineConfig
+from src.utils.helpers import load_data
 from src.utils.logger_config import LoggedPipelineStep
 from src.utils.pipeline_step import PipelineStep
 
@@ -29,8 +32,7 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
 
     def __post_init__(self):
         PipelineStep.__init__(self, self.config)
-        if self.config is not None:
-            LoggedPipelineStep.__init__(self, self.config)
+        LoggedPipelineStep.__init__(self, self.config)
 
         logger.info(f"Starting {self.step_name} step...")
         logger.success("AlignmentDataset initialised.")
@@ -42,15 +44,26 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
             alignments=self.alignments,
             data=self.data,
         )
-        # self.execute(
-        #     source_lines=self.source_lines,
-        #     target_lines=self.target_lines,
-        #     alignments=self.alignments,
-        #     data=self.reverse_data,
-        #     reverse=True,
-        # )
+        self.execute(
+            source_lines=self.source_lines,
+            target_lines=self.target_lines,
+            alignments=self.alignments,
+            data=self.reverse_data,
+            reverse=True,
+        )
+
+        # create bidirectional data
         if not self.do_inference:
             self.data = self.data + self.reverse_data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, item):
+        if self.do_inference:
+            return self.data[item], self.reverse_data[item]
+        else:
+            return self.data[item]
 
     def execute(
         self,
@@ -99,6 +112,7 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
                 [self.tokenizer.convert_tokens_to_ids(subunit) for subunit in token]
                 for token in source_tokens
             ]  # type: ignore
+
             target_w2id: list[list[int]] = [
                 self.tokenizer.convert_tokens_to_ids(token) for token in target_tokens
             ]  # type: ignore
@@ -126,15 +140,18 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
             source_bpe2word = (
                 torch.ones_like(source_input_ids[0]) * -1
             )  # multiply by -1 to tell model to ignore word boundaries in source text
+
             target_bpe2word = []
             for k, word_list in enumerate(target_tokens):
-                target_bpe2word += [i for _ in word_list]
+                target_bpe2word += [k for _ in word_list]
+
             target_bpe2word = torch.tensor(
                 target_bpe2word + [-1]
             )  # -1 added to tell model to ignore last word
 
             # encoder-decoder-like input
-            input_ids = torch.cat((source_bpe2word, target_bpe2word), dim=-1)[:256]
+            input_ids = torch.cat((source_input_ids, target_input_ids), dim=1)[:, :256]
+
             source_labels = (
                 torch.ones_like(source_input_ids) * -100
             )  # tells pytorch to ignore source labels in loss calculation
@@ -173,12 +190,72 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
 
                 if not reverse:
                     alignment_tuple = (wsrc, wtgt)
-                    print(f"Alignment tuple: {alignment_tuple}")
                     self.sure[-1].add(alignment_tuple)
 
             labels = torch.cat((source_labels, target_labels), dim=1)
 
-            if i == 0:
-                print(f"Sure labesl: {self.sure[-1]}")
+            # check that the last token of every sequence is ignored if it is the tokenizer eos token
+            if input_ids[0, -1] == self.tokenizer.eos_token_id:
+                labels[:, -1] = -100
 
-                break
+            if self.do_inference:
+                # Inference mode - batch structure:
+                bpe2word_map = torch.cat((source_bpe2word, target_bpe2word), dim=0)
+                data.append(
+                    {
+                        "input_ids": input_ids,
+                        "attention_mask": torch.ones_like(input_ids),
+                        "labels": labels,
+                        "bpe2wordmap": bpe2word_map,  # Needed for decoding alignments
+                    }
+                )
+            else:
+                # Training mode - individual examples:
+                for input_id, label in zip(input_ids.tolist(), labels.tolist()):
+                    data.append(
+                        {
+                            "input_ids": input_ids,
+                            "attention_mask": [1] * len(input_id),
+                            "labels": label[:256],
+                        }
+                    )
+
+            # Debugging output; Uncomment as needed:
+            # if i == 0:
+            #     print(f"Source input ids shape: {source_input_ids.shape}")
+            #     print("\n")
+            #     print(f"Source input ids: {source_input_ids}")
+            #     print("\n")
+            #     print(f"Target input ids shape: {target_input_ids.shape}")
+            #     print("\n")
+            #     print(f"Target input ids: {target_input_ids}")
+            #     print("\n")
+            #     print(f"Source labels: {source_labels}")
+            #     print("\n")
+            #     print(f"Source labels shape: {source_labels.shape}")
+            #     print("\n")
+            #     print(f"Target labels: {target_labels}")
+            #     print("\n")
+            #     print(f"Target labels shape: {target_labels.shape}")
+            #     print("\n")
+            #     print(f"Labels: {labels}")
+            #     break
+
+
+if __name__ == "__main__":
+    data_path_dict = {
+        "src_data": "data/english.txt",
+        "tgt_data": "data/chinese.txt",
+        "align_data": "data/alignment.txt",
+    }
+    src_data, tgt_data, align_data = load_data(paths=data_path_dict)
+    p_config = PipelineConfig(
+        output_dir=Path("output"), log_dir=Path("logs"), save_checkpoint=False
+    )
+    a = AlignmentDataset(
+        tokenizer=XLMRobertaTokenizerFast.from_pretrained("xlm-roberta-base"),
+        source_lines=src_data,
+        target_lines=tgt_data,
+        alignments=align_data,
+        config=p_config,
+    )
