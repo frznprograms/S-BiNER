@@ -1,2 +1,16 @@
 # macos/vscode rubbish
 .DS_Store
+
+
+# data
+/data
+
+# environments
+*.env
+
+# caches
+*.pyc
+*__pycache__
+
+# venv
+.venv
