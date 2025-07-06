@@ -1,12 +1,13 @@
 import itertools
+import gc
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import torch
 from loguru import logger
-from tqdm import tqdm
-from transformers import XLMRobertaTokenizerFast
+from tqdm.auto import tqdm
+from transformers import XLMRobertaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 from configs.pipeline_configs import PipelineConfig
@@ -75,9 +76,10 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
     ) -> None:
         progress_bar = tqdm(total=len(source_lines))
         for i, (source_line, target_line, alignment) in enumerate(
-            zip(source_lines, target_lines, alignments)
+            zip(source_lines, target_lines, alignments),
         ):
             progress_bar.update(1)
+
             if reverse:
                 source_line, target_line = target_line, source_line
 
@@ -152,10 +154,15 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
             # encoder-decoder-like input
             input_ids = torch.cat((source_input_ids, target_input_ids), dim=1)[:, :256]
 
+            # Adjust target_bpe2word to match the actual target length in input_ids:
+            source_len = source_input_ids.shape[1]
+            actual_target_len = input_ids.shape[1] - source_len
+            target_bpe2word = target_bpe2word[:actual_target_len]
+
             source_labels = (
                 torch.ones_like(source_input_ids) * -100
             )  # tells pytorch to ignore source labels in loss calculation
-            target_labels = torch.zeros_like(target_input_ids)
+            target_labels = torch.zeros(len(source_input_ids), actual_target_len)
 
             if not reverse:
                 self.sure.append((set()))
@@ -182,6 +189,21 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
                         if self.one_indexed
                         else (int(source_idx) - 1, int(target_idx) - 1)
                     )
+
+                # BOUNDS CHECKING
+                if wsrc < 0 or wsrc >= len(source_sentence):
+                    continue
+
+                if wtgt < 0 or wtgt >= len(target_sentence):
+                    continue
+
+                # Additional check for tensor bounds
+                if wsrc >= len(target_labels):
+                    continue
+
+                # Check if wtgt exists in target_bpe2word before using it
+                if wtgt not in target_bpe2word:
+                    continue
 
                 if wsrc < len(target_labels):
                     target_labels[wsrc, :] = torch.where(
@@ -214,11 +236,16 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
                 for input_id, label in zip(input_ids.tolist(), labels.tolist()):
                     data.append(
                         {
-                            "input_ids": input_ids,
+                            "input_ids": input_id,
                             "attention_mask": [1] * len(input_id),
                             "labels": label[:256],
                         }
                     )
+
+            del input_ids, labels, source_input_ids, target_input_ids
+            del source_labels, target_labels, target_bpe2word
+            if i % 20 == 0:  # More frequent cleanup
+                gc.collect()
 
             # Debugging output; Uncomment as needed:
             # if i == 0:
@@ -249,11 +276,16 @@ if __name__ == "__main__":
         "align_data": "data/alignment.txt",
     }
     src_data, tgt_data, align_data = load_data(paths=data_path_dict)
+    src_data, tgt_data, align_data = (
+        src_data[:21999],
+        tgt_data[:21999],
+        align_data[:21999],
+    )
     p_config = PipelineConfig(
         output_dir=Path("output"), log_dir=Path("logs"), save_checkpoint=False
     )
     a = AlignmentDataset(
-        tokenizer=XLMRobertaTokenizerFast.from_pretrained("xlm-roberta-base"),
+        tokenizer=XLMRobertaTokenizer.from_pretrained("xlm-roberta-base"),
         source_lines=src_data,
         target_lines=tgt_data,
         alignments=align_data,

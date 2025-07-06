@@ -8,6 +8,7 @@ dependencies = [
     "ipykernel>=6.29.5",
     "loguru>=0.7.3",
     "pandas>=2.3.0",
+    "sentencepiece>=0.2.0",
     "torch>=2.7.1",
     "tqdm>=4.67.1",
     "transformers>=4.53.0",
