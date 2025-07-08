@@ -26,6 +26,7 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
     one_indexed: bool = True
     context_sep: Optional[str] = " [WORD_SEP] "
     do_inference: bool = False
+    save_data: bool = False
 
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
@@ -57,6 +58,10 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
         if not self.do_inference:
             self.data = self.data + self.reverse_data
 
+        if self.save_data:
+            torch.save(self.data, "data/data.pt")
+            torch.save(self.reverse_data, "data/reverse_data.pt")
+
     def __len__(self):
         return len(self.data)
 
@@ -84,6 +89,9 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
                 source_line, target_line = target_line, source_line
 
             word_by_word_examples = []
+
+            source_sentence: list[str]
+            target_sentence: list[str]
             source_sentence, target_sentence = (
                 source_line.strip().split(),
                 target_line.strip().split(),
@@ -247,27 +255,6 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
             if i % 20 == 0:  # More frequent cleanup
                 gc.collect()
 
-            # Debugging output; Uncomment as needed:
-            # if i == 0:
-            #     print(f"Source input ids shape: {source_input_ids.shape}")
-            #     print("\n")
-            #     print(f"Source input ids: {source_input_ids}")
-            #     print("\n")
-            #     print(f"Target input ids shape: {target_input_ids.shape}")
-            #     print("\n")
-            #     print(f"Target input ids: {target_input_ids}")
-            #     print("\n")
-            #     print(f"Source labels: {source_labels}")
-            #     print("\n")
-            #     print(f"Source labels shape: {source_labels.shape}")
-            #     print("\n")
-            #     print(f"Target labels: {target_labels}")
-            #     print("\n")
-            #     print(f"Target labels shape: {target_labels.shape}")
-            #     print("\n")
-            #     print(f"Labels: {labels}")
-            #     break
-
 
 if __name__ == "__main__":
     data_path_dict = {
@@ -290,4 +277,26 @@ if __name__ == "__main__":
         target_lines=tgt_data,
         alignments=align_data,
         config=p_config,
+        save_data=True,
     )
+
+    # Debugging output; inlcude in execute() function and uncomment as needed:
+    # if i == 0:
+    #     print(f"Source input ids shape: {source_input_ids.shape}")
+    #     print("\n")
+    #     print(f"Source input ids: {source_input_ids}")
+    #     print("\n")
+    #     print(f"Target input ids shape: {target_input_ids.shape}")
+    #     print("\n")
+    #     print(f"Target input ids: {target_input_ids}")
+    #     print("\n")
+    #     print(f"Source labels: {source_labels}")
+    #     print("\n")
+    #     print(f"Source labels shape: {source_labels.shape}")
+    #     print("\n")
+    #     print(f"Target labels: {target_labels}")
+    #     print("\n")
+    #     print(f"Target labels shape: {target_labels.shape}")
+    #     print("\n")
+    #     print(f"Labels: {labels}")
+    #     break

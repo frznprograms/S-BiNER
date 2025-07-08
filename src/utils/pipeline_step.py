@@ -23,4 +23,4 @@ class PipelineStep(ABC):
                 data.to_csv(checkpoint_path)
             else:
                 with open(checkpoint_path, "w") as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
+                    json.dump(data, f, indent=4, ensure_ascii=False)
