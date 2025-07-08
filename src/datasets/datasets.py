@@ -17,7 +17,7 @@ from src.utils.pipeline_step import PipelineStep
 
 
 @dataclass
-class AlignmentDataset(PipelineStep, LoggedPipelineStep):
+class AlignmentDatasetGold(PipelineStep, LoggedPipelineStep):
     tokenizer: PreTrainedTokenizer
     source_lines: list[str]
     target_lines: list[str]
@@ -37,7 +37,7 @@ class AlignmentDataset(PipelineStep, LoggedPipelineStep):
         LoggedPipelineStep.__init__(self, self.config)
 
         logger.info(f"Starting {self.step_name} step...")
-        logger.success("AlignmentDataset initialised.")
+        logger.success("AlignmentDatasetGold initialised.")
 
         logger.info("Preparing dataset...")
         self.execute(
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     p_config = PipelineConfig(
         output_dir=Path("output"), log_dir=Path("logs"), save_checkpoint=False
     )
-    a = AlignmentDataset(
+    a = AlignmentDatasetGold(
         tokenizer=XLMRobertaTokenizer.from_pretrained("xlm-roberta-base"),
         source_lines=src_data,
         target_lines=tgt_data,

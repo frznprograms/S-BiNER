@@ -45,3 +45,10 @@ I wish to give credit to the original creators of the concept of BinaryAlign, wh
   journal={arXiv preprint arXiv:2407.12881},
   year={2024}
 }
+
+@inproceedings{dou2021word,
+  title={Word Alignment by Fine-tuning Embeddings on Parallel Corpora},
+  author={Dou, Zi-Yi and Neubig, Graham},
+  booktitle={Conference of the European Chapter of the Association for Computational Linguistics (EACL)},
+  year={2021}
+}
