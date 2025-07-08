@@ -1,21 +1,29 @@
 Dataset Preparation
-- AlignmentDataset prepare dataset function
-- __getitem__
-- __len__
+- AlignmentDatasetSilver: complete data Preparation
+- AlignmentDatasetGold: refactor code; more abstraction
+- translation to get best possible dataset for the job
+- __getitem__ ✅
+- __len__ ✅
 
 BinaryAlignment
-- XLM-R integration
+- which tokenizer to use to get better span separation for Chinese?
+    - hanlp tokenizer for chinese, XLM-R for English -> best of both words approach
+- Contrastive learning approach could improve performance even more
+- Encoder model integration to generate alignments
+    - XLM-R
 
 NER Annotation Projection
 - use alignments to project labels onto new dataset
     - span-level alignment -> how will this be done for erroneous labels? Is there a way the algorithm can account for such cases?
+    - the parallel corpora generated with human annotation must first be annotated by span level, e.g. B-LOC, I_LOC -> LOC then separated back again into B-LOC, I-LOC in the target language
 
 Evaluation
+- evaluate quality of translation using TranslationEvaluator
 - use the parallel corpora for csit to evaluate ner scores
 - f1 score? 
 - AER?
 
 Documentation
 - Organise better
-    - main folder readme to just contain title, description, author, citations
+    - main folder readme to just contain title, description, author, citations ✅
     - inner folder readme to contain more explanations on how the code works
