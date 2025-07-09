@@ -1,10 +1,10 @@
 Dataset Preparation
-- AlignmentDatasetSilver: complete data Preparation
-- AlignmentDatasetGold: refactor code; more abstraction
-- refactor datasets to fit BaseDataset
-    - remove dataset preparation as a pipeline step; assume data is ready to go when pipeline starts
-    - change logger name; datasets can be a LoggerType
-- translation to get best possible dataset for the job
+- AlignmentDatasetSilver: complete data Preparation 
+- AlignmentDatasetGold: refactor code; more abstraction 
+- refactor datasets to fit BaseDataset ✅
+    - remove dataset preparation as a pipeline step; assume data is ready to go when pipeline starts ✅
+    - change logger name; datasets can be a LoggerType ✅
+- translation to get best possible dataset for the job?
 - __getitem__ ✅
 - __len__ ✅
 
