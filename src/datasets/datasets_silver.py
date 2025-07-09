@@ -7,22 +7,20 @@ from loguru import logger
 from tqdm.auto import tqdm
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from configs.pipeline_configs import PipelineConfig
-from src.utils.helpers import load_data
-from configs.logger_config import LoggedPipelineStep
-from src.utils.pipeline_step import PipelineStep
+from configs.logger_config import LoggedProcess
+from src.datasets.base_dataset import BaseDataset
 
 
 @dataclass
-class AlignmentDatasetSilver(PipelineStep, LoggedPipelineStep):
+class AlignmentDatasetSilver(BaseDataset, LoggedProcess):
     tokenizer: PreTrainedTokenizer
     source_lines: list[str]
     target_lines: list[str]
-    config: PipelineConfig
     one_indexed: bool = False
     context_sep: Optional[str] = " <SEP> "
     do_inference: bool = False
     save_data: bool = False
+    log_output_dir: str = "/logs"
 
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
@@ -32,12 +30,19 @@ class AlignmentDatasetSilver(PipelineStep, LoggedPipelineStep):
     )  # TODO: figure out awesome align output
 
     def __post_init__(self):
-        PipelineStep.__init__(self, self.config)
-        LoggedPipelineStep.__init__(self, self.config)
+        LoggedProcess.__init__(self, output_dir=self.log_output_dir)
+        logger.success("AlignmentDatasetSilver initialised.")
 
-        logger.info(f"Starting {self.step_name} step...")
-        logger.success("AlignmentDatasetUnsupervised initialised.")
+    def __len__(self):
+        return len(self.data)
 
+    def __getitem__(self, item):
+        if self.do_inference:
+            return self.data[item], self.reverse_data[item]
+        else:
+            return self.data[item]
+
+    def run(self):
         self.execute(
             source_lines=self.source_lines,
             target_lines=self.target_lines,
@@ -50,15 +55,6 @@ class AlignmentDatasetSilver(PipelineStep, LoggedPipelineStep):
             alignments=self.alignments,
             reverse=True,
         )
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, item):
-        if self.do_inference:
-            return self.data[item], self.reverse_data[item]
-        else:
-            return self.data[item]
 
     def execute(
         self,

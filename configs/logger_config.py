@@ -1,23 +1,23 @@
 import sys
 from datetime import datetime
-
+from pathlib import Path
 from loguru import logger
-from configs.pipeline_configs import PipelineConfig
+
+# Set min console level to DEBUG if true
+DEBUG = True
 
 
-class LoggedPipelineStep:
-    def __init__(self, config: PipelineConfig):
-        self.config = config
+class LoggedProcess:
+    def __init__(self, output_dir: str = "/logs"):
+        self.output_dir = Path(output_dir)
         self.setup_logger()
 
     @logger.catch(message="Failed to create output directory", reraise=True)
     def make_output_directory(self):
         """Makes required output directories"""
         dirs = [
-            self.config.output_dir,
-            self.config.output_dir / "checkpoints",
-            self.config.output_dir / "logs",
-            self.config.output_dir / "final_output",
+            self.output_dir,
+            self.output_dir / "logs",
         ]
 
         for dir in dirs:
@@ -25,22 +25,16 @@ class LoggedPipelineStep:
 
     @logger.catch(message="Logging setup failed", reraise=True)
     def setup_logger(self):
-        """Setups the logging configuration for Loguru's logger"""
-
         timestamp = datetime.now().strftime("%d_%H%M")
-        debug_dir = self.config.log_dir / "debug"  # type: ignore
-        error_dir = self.config.log_dir / "error"  # type: ignore
-
-        # Set min console level to DEBUG if true
-        DEBUG = self.config.console_debug
+        debug_dir = self.output_dir / "debug"
+        error_dir = self.output_dir / "error"
 
         logger.remove()
 
         # Console Logger
         logger.add(
             sys.stderr,
-            format="<green>{time: HH:mm:ss}</green> | <level>{level: <8}</level> | \
-                <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            format=self._get_colored_format(),
             level="DEBUG" if DEBUG else "INFO",
         )
 
@@ -62,7 +56,33 @@ class LoggedPipelineStep:
         )
 
         logger.success(
-            f"Logger initialized. Logs will be saved to {self.config.log_dir}"
+            f"Logger initialized. Logs will be saved to {self.output_dir / 'logs'}"
         )
 
         return logger
+
+    def _get_colored_format(self):
+        """Returns format string with custom colors for different log levels"""
+
+        def formatter(record):
+            level = record["level"].name
+
+            # Define colors for different levels
+            colors = {
+                "ERROR": "<red>",
+                "WARNING": "<yellow>",
+                "SUCCESS": "<green>",
+                "INFO": "<white>",
+                "DEBUG": "<blue>",
+            }
+
+            level_color = colors.get(level, "<white>")
+
+            return (
+                "<green>{time: HH:mm:ss}</green> | "
+                f"{level_color}{{level: <8}}</> | "
+                "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+                f"{level_color}{{message}}</>"
+            )
+
+        return formatter
