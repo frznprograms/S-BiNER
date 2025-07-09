@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "hanlp>=2.1.1",
     "ipykernel>=6.29.5",
     "loguru>=0.7.3",
     "pandas>=2.3.0",
