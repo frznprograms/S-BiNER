@@ -1,5 +1,5 @@
-import itertools
 import gc
+import itertools
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -10,33 +10,30 @@ from tqdm.auto import tqdm
 from transformers import XLMRobertaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from configs.pipeline_configs import PipelineConfig
+from configs.logger_config import LoggedProcess
+from src.datasets.base_dataset import BaseDataset
 from src.utils.helpers import load_data
-from configs.logger_config import LoggedPipelineStep
-from src.utils.pipeline_step import PipelineStep
 
 
 @dataclass
-class AlignmentDatasetGold(PipelineStep, LoggedPipelineStep):
+class AlignmentDatasetGold(BaseDataset, LoggedProcess):
     tokenizer: PreTrainedTokenizer
     source_lines: list[str]
     target_lines: list[str]
     alignments: list[str]
-    config: PipelineConfig
     one_indexed: bool = True
     context_sep: Optional[str] = " [WORD_SEP] "
     do_inference: bool = False
     save_data: bool = False
+    log_output_dir: str = "/logs"
 
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
     sure: list = field(default_factory=list, init=False)
 
     def __post_init__(self):
-        PipelineStep.__init__(self, self.config)
-        LoggedPipelineStep.__init__(self, self.config)
+        LoggedProcess.__init__(self, output_dir=self.log_output_dir)
 
-        logger.info(f"Starting {self.step_name} step...")
         logger.success("AlignmentDatasetGold initialised.")
 
         logger.info("Preparing dataset...")
@@ -268,15 +265,11 @@ if __name__ == "__main__":
         tgt_data[:21999],
         align_data[:21999],
     )
-    p_config = PipelineConfig(
-        output_dir=Path("output"), log_dir=Path("logs"), save_checkpoint=False
-    )
     a = AlignmentDatasetGold(
         tokenizer=XLMRobertaTokenizer.from_pretrained("xlm-roberta-base"),
         source_lines=src_data,
         target_lines=tgt_data,
         alignments=align_data,
-        config=p_config,
         save_data=True,
     )
 
