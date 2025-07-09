@@ -66,11 +66,16 @@ class AwesomeAlignDataset:
         temp_df["final"] = temp_df["source"] + self.data_sep + temp_df["target"]
         if include_reverse:
             temp_df["reverse"] = temp_df["target"] + self.data_sep + temp_df["source"]
-            temp_df["final"] = pd.concat([temp_df["final"], temp_df["reverse"]], axis=0)
+            final_data = pd.concat(
+                [temp_df["final"], temp_df["reverse"]], axis=0, ignore_index=True
+            )
+            result_df = pd.DataFrame({"final": final_data})
+        else:
+            result_df = temp_df[["final"]]
 
         logger.success(f"Read data from {path}.")
 
-        return temp_df[["final"]]
+        return result_df
 
     def combine_data(self, others: list[Self], override: bool = False) -> pd.DataFrame:
         logger.info(
@@ -85,7 +90,11 @@ class AwesomeAlignDataset:
         return combined_df
 
     def save_data(self, save_path: Path):
-        self.data.to_csv(save_path, index=False)
+        try:
+            self.data.to_csv(save_path, index=False)
+            logger.success(f"Data saved to {save_path}.")
+        except Exception as e:
+            logger.error(f"Unable to save dataset: {e}")
 
 
 if __name__ == "__main__":

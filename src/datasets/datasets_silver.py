@@ -9,7 +9,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 
 from configs.pipeline_configs import PipelineConfig
 from src.utils.helpers import load_data
-from src.utils.logger_config import LoggedPipelineStep
+from configs.logger_config import LoggedPipelineStep
 from src.utils.pipeline_step import PipelineStep
 
 
