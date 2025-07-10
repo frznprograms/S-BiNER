@@ -26,9 +26,9 @@ class AwesomeAlignDataset(BaseDataset):
             path=self.data_path, include_reverse=True
         )
         if self.save:
-            self.save_data(save_path=self.save_path)
-        # self.target_tok = AutoTokenizer.from_pretrained("FacebookAI/xlm-roberta-base")
+            self.save_data(data=self.data, save_path=self.save_path)
 
+        # self.target_tok = AutoTokenizer.from_pretrained("FacebookAI/xlm-roberta-base")
         logger.success("AwesomeAlignDataset initialised.")
 
     def __len__(self) -> int:
@@ -78,13 +78,6 @@ class AwesomeAlignDataset(BaseDataset):
 
         return lines
 
-    def save_data(self, save_path: str):
-        try:
-            self.data.to_csv(save_path, index=False)
-            logger.success(f"Data saved to {save_path}.")
-        except Exception as e:
-            logger.error(f"Unable to save dataset: {e}")
-
     def combine_data(self, others: list[Self], override: bool = False) -> pd.DataFrame:
         logger.info(
             "Combining AwesomeAlignDataset(s) now, please ensure you are joining the correct datasets to avoid duplicate data..."
@@ -110,7 +103,7 @@ if __name__ == "__main__":
         save_path="data/raw_data/hk.csv",
     )
     new_df = un.combine_data([hk], override=True)
-    un.save_data(save_path="data/cleaned_data/aadf_2.csv")
+    un.save_data(data=un.data, save_path="data/cleaned_data/aadf_2.csv")
 
 # see example UN 1200+ for issues
 # can we financially justify the use of DeepL to create a parallel corpora, after the model has proven to train/work?
