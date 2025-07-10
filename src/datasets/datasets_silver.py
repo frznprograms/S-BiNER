@@ -43,20 +43,20 @@ class AlignmentDatasetSilver(BaseDataset, LoggedProcess):
             return self.data[item]
 
     def run(self):
-        self.execute(
+        self.prepare_data(
             source_lines=self.source_lines,
             target_lines=self.target_lines,
             alignments=self.alignments,
         )
 
-        self.execute(
+        self.prepare_data(
             source_lines=self.source_lines,
             target_lines=self.target_lines,
             alignments=self.alignments,
             reverse=True,
         )
 
-    def execute(
+    def prepare_data(
         self,
         source_lines: list[str],
         target_lines: list[str],
