@@ -82,11 +82,6 @@ class AlignmentDatasetGold(BaseDataset, LoggedProcess):
 
 
 if __name__ == "__main__":
-    data_path_dict = {
-        "src_data": "data/english.txt",
-        "tgt_data": "data/chinese.txt",
-        "align_data": "data/alignment.txt",
-    }
     a = AlignmentDatasetGold(
         tokenizer=XLMRobertaTokenizer.from_pretrained("xlm-roberta-base"),
         source_lines_path="data/raw_data/english.txt",
