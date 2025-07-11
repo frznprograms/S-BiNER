@@ -14,3 +14,9 @@
 
 # venv
 .venv
+
+# large model files
+/models/awesome-align
+
+# outputs
+/output
