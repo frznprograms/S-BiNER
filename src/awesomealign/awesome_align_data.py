@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 import hanlp
 import hanlp.pretrained
@@ -6,12 +7,11 @@ import pandas as pd
 from loguru import logger
 from typing_extensions import Self
 
-from src.datasets.base_dataset import BaseDataset
 from src.utils.decorators import timed_execution
 
 
 @dataclass
-class AwesomeAlignDataset(BaseDataset):
+class AwesomeAlignDataset:
     data_path: str
     context_sep: str = " ||| "  # as prescribed in AwesomeAlign repo
     data: pd.DataFrame = field(default_factory=pd.DataFrame, init=False)
@@ -22,9 +22,8 @@ class AwesomeAlignDataset(BaseDataset):
         # hardcoded oops
         logger.info("Loading Chinese tokenizer...")
         self.source_tok = hanlp.load(hanlp.pretrained.tok.COARSE_ELECTRA_SMALL_ZH)
-        self.data: pd.DataFrame = self.prepare_data(
-            path=self.data_path, include_reverse=True
-        )
+        self.data: pd.DataFrame = self.run()
+
         if self.save:
             self.save_data(data=self.data, save_path=self.save_path)
 
@@ -33,6 +32,9 @@ class AwesomeAlignDataset(BaseDataset):
 
     def __len__(self) -> int:
         return len(self.data)
+
+    def run(self):
+        return self.prepare_data(path=self.data_path, include_reverse=True)
 
     @timed_execution
     def prepare_data(self, path: str, include_reverse: bool = True) -> pd.DataFrame:
@@ -89,6 +91,9 @@ class AwesomeAlignDataset(BaseDataset):
             self.data = combined_df
 
         return combined_df
+
+    def save_data(self, data: Any, save_path: str) -> None:
+        data.to_csv(save_path)
 
 
 if __name__ == "__main__":
