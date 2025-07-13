@@ -1,5 +1,5 @@
 Hi there, welcome to the 
-## 𝔃eta𝖆lign
+## ZetaAlign
 reposiotory.
 
 ### Description
@@ -37,7 +37,7 @@ To run inference using **ZetaAlign**, run the following terminal command:
 
 
 ### Citations
-I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired by:
+I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired by, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo.
 
 @article{latouche2024binaryalign,
   title={BinaryAlign: Word Alignment as Binary Sequence Labeling},
@@ -51,4 +51,50 @@ I wish to give credit to the original creators of the concept of BinaryAlign, wh
   author={Dou, Zi-Yi and Neubig, Graham},
   booktitle={Conference of the European Chapter of the Association for Computational Linguistics (EACL)},
   year={2021}
+}
+
+@article{DBLP:journals/corr/abs-1911-02116,
+  author    = {Alexis Conneau and
+               Kartikay Khandelwal and
+               Naman Goyal and
+               Vishrav Chaudhary and
+               Guillaume Wenzek and
+               Francisco Guzm{\'{a}}n and
+               Edouard Grave and
+               Myle Ott and
+               Luke Zettlemoyer and
+               Veselin Stoyanov},
+  title     = {Unsupervised Cross-lingual Representation Learning at Scale},
+  journal   = {CoRR},
+  volume    = {abs/1911.02116},
+  year      = {2019},
+  url       = {http://arxiv.org/abs/1911.02116},
+  eprinttype = {arXiv},
+  eprint    = {1911.02116},
+  timestamp = {Mon, 11 Nov 2019 18:38:09 +0100},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-1911-02116.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@article{DBLP:journals/corr/abs-1907-11692,
+  author    = {Yinhan Liu and
+               Myle Ott and
+               Naman Goyal and
+               Jingfei Du and
+               Mandar Joshi and
+               Danqi Chen and
+               Omer Levy and
+               Mike Lewis and
+               Luke Zettlemoyer and
+               Veselin Stoyanov},
+  title     = {RoBERTa: {A} Robustly Optimized {BERT} Pretraining Approach},
+  journal   = {CoRR},
+  volume    = {abs/1907.11692},
+  year      = {2019},
+  url       = {http://arxiv.org/abs/1907.11692},
+  archivePrefix = {arXiv},
+  eprint    = {1907.11692},
+  timestamp = {Thu, 01 Aug 2019 08:59:33 +0200},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-1907-11692.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
