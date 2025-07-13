@@ -14,12 +14,13 @@ BinaryAlignment
     - hanlp tokenizer for chinese, XLM-R for English -> best of both words approach
 - Contrastive learning approach could improve performance even more
 - Encoder model integration to generate alignments
-    - XLM-R
+    - XLM-R? Maybe need to use mBERT or BERT-base
 
 NER Annotation Projection
 - use alignments to project labels onto new dataset
     - span-level alignment -> how will this be done for erroneous labels? Is there a way the algorithm can account for such cases?
     - the parallel corpora generated with human annotation must first be annotated by span level, e.g. B-LOC, I_LOC -> LOC then separated back again into B-LOC, I-LOC in the target language
+    - entity span mapping to improve projection of NER labels
 
 Evaluation
 - evaluate quality of translation using TranslationEvaluator
@@ -31,3 +32,8 @@ Documentation
 - Organise better
     - main folder readme to just contain title, description, author, citations ✅
     - inner folder readme to contain more explanations on how the code works
+
+
+Further applications:
+- Can we consider using the entity span mapping algorithm to use
+- replace SpanAlign with BinaryAlign in candidate matching pipeline
