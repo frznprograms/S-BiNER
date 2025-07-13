@@ -13,6 +13,7 @@ from src.datasets.base_dataset import BaseDataset
 class AlignmentDatasetGold(BaseDataset, LoggedProcess):
     def __post_init__(self):
         super().__post_init__()
+        self.one_indexed = True
         logger.success(f"{self.__class__.__name__} initialized successfully")
 
     def _prepare_labels(
@@ -48,8 +49,8 @@ class AlignmentDatasetGold(BaseDataset, LoggedProcess):
                     if self.one_indexed
                     else (int(source_idx) - 1, int(target_idx) - 1)
                 )
-                alignment_tuple = (wsrc, wtgt)
-                self.sure[-1].add(alignment_tuple)
+                # alignment_tuple = (wsrc, wtgt)
+                # self.sure[-1].add(alignment_tuple)
             else:
                 wtgt, wsrc = (
                     (int(source_idx), int(target_idx))
@@ -87,7 +88,7 @@ if __name__ == "__main__":
         source_lines_path="data/raw_data/english.txt",
         target_lines_path="data/raw_data/chinese.txt",
         alignments_path="data/raw_data/alignment.txt",
-        save=True,
+        save=False,
     )
 
     # Debugging output; inlcude in execute() function and uncomment as needed:

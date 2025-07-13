@@ -21,21 +21,26 @@ class BaseDataset(ABC, LoggedProcess):
     source_lines_path: str
     target_lines_path: str
     alignments_path: str
+    limit: Optional[int] = None
     one_indexed: bool = False
     context_sep: Optional[str] = " <SEP> "
     do_inference: bool = False
-    log_output_dir: str = "/logs"
+    log_output_dir: str = "logs"
     save: bool = False
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
-    sure: list = field(default_factory=list, init=False)
+    # sure: list = field(default_factory=list, init=False) 
 
     def __post_init__(self):
         LoggedProcess.__init__(self, output_dir=self.log_output_dir)
 
-        self.source_lines = self.read_data(path=self.source_lines_path)
-        self.target_lines = self.read_data(path=self.target_lines_path)
-        self.alignments = self.read_data(path=self.alignments_path)
+        self.source_lines = self.read_data(
+            path=self.source_lines_path, limit=self.limit
+        )
+        self.target_lines = self.read_data(
+            path=self.target_lines_path, limit=self.limit
+        )
+        self.alignments = self.read_data(path=self.alignments_path, limit=self.limit)
 
         logger.info("Preparing dataset...")
         self.run()
@@ -227,9 +232,13 @@ class BaseDataset(ABC, LoggedProcess):
             "target_input_ids": target_input_ids,
         }
 
-    def read_data(self, path: str) -> list[str]:
+    def read_data(self, path: str, limit: Optional[int]) -> list[str]:
         """Default implementation for reading data"""
         data = delist_the_list(pd.read_csv(path, sep="\t").values.tolist())
+        if limit is None:
+            limit = len(data)
+        data = data[:limit]
+
         return data
 
     def save_data(self, data: Any, save_path: str, format: str = "pt") -> None:
