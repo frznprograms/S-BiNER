@@ -1,34 +1,36 @@
 Hi there, welcome to the 
-## NERZha
+## S-BiNER
 repository.
 
 ### Description
-This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, and fine-tuning to improve model performance on Chinese word alignment (WA) tasks.
+This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on Chinese.
+
+**Disclaimer**: This model is experimental and not designed for production-grade tasks yet.
 
 This methodology comes with the added twist of simple annotation projection for Named Entity Recognition (NER) tasks. 
 
 ### Author(s)
-Shane Bharathan (shanevbh@gmail.com)
+Shane Bharathan (shanevbh@gmail.com/shane_vbharathan@aiip.sg)
 
 ### Instructions for usage
 First, install the `uv` package management software for Python: https://docs.astral.sh/uv/getting-started/installation/.
 
 Once installed, run the terminal command
-```python
+```bash
 uv init
 ```
 and then 
-```python
+```bash
 uv sync
 ``` 
 This will intialise a `.venv` folder and install the required dependencies for this project.
 
 If you do not wish to use the `uv` package (though I would highly recommend it as it's really easy to use and wicked fast), you may also simply run 
-```python
+```bash
 pip install -r requirements.txt
 ```
 To configure accelerate configurations, run 
-```python
+```bash
 accelerate config
 ```
 and follow the prompts in the command line.
@@ -38,11 +40,13 @@ To run inference using **ZetaAlign**, run the following terminal command:
 
 ```
 
+🚧 WORK IN PROGRESS 🚧
+
 ### Input and Output formats
 
 
 ### Citations
-I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired by, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo.
+I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo.
 
 @article{latouche2024binaryalign,
   title={BinaryAlign: Word Alignment as Binary Sequence Labeling},
