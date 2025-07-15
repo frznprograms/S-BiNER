@@ -16,18 +16,12 @@ from src.models.binary_token_classification import (
 from configs.model_config import ModelConfig
 
 
-# TODO: find out if it is better to use RobertaModelForTokenClassification
-# TODO: ensure correct configuration set up for each model
-# -> num_labels, classifier_dropout, hidden_dropout_prob, hidden_size etc.
-# TODO: document shape tracking as tensors move through the model
-# TODO: how to add symmetrisation to the model to avoid data complexity?
-
-
 class RobertaModelForBinaryTokenClassification(
     RobertaPreTrainedModel, BinaryTokenClassification
 ):
     def __init__(self, config: ModelConfig):
-        super().__init__(config=config)
+        roberta_config = config._to_roberta_config()
+        super().__init__(config=roberta_config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level
         self.model = RobertaModel(config=config, add_pooling_layer=False)
@@ -60,7 +54,8 @@ class XLMRobertaModelForBinaryTokenClassification(
     XLMRobertaPreTrainedModel, BinaryTokenClassification
 ):
     def __init__(self, config: ModelConfig):
-        super().__init__(config=config)
+        xlm_roberta_config = config._to_xlm_roberta_config()
+        super().__init__(config=xlm_roberta_config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level
         self.model = XLMRobertaModel(config=config, add_pooling_layer=False)
@@ -86,3 +81,10 @@ class XLMRobertaModelForBinaryTokenClassification(
             attention_mask=attention_mask,
             labels=labels,
         )
+
+
+# TODO: find out if it is better to use RobertaModelForTokenClassification
+# TODO: ensure correct configuration set up for each model
+# -> num_labels, classifier_dropout, hidden_dropout_prob, hidden_size etc.
+# TODO: document shape tracking as tensors move through the model
+# TODO: how to add symmetrisation to the model to avoid data complexity?
