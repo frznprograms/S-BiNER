@@ -1,6 +1,6 @@
 Hi there, welcome to the 
-## ZetaAlign
-reposiotory.
+## NERZha
+repository.
 
 ### Description
 This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, and fine-tuning to improve model performance on Chinese word alignment (WA) tasks.
@@ -14,19 +14,24 @@ Shane Bharathan (shanevbh@gmail.com)
 First, install the `uv` package management software for Python: https://docs.astral.sh/uv/getting-started/installation/.
 
 Once installed, run the terminal command
-```
+```python
 uv init
 ```
 and then 
-```
+```python
 uv sync
 ``` 
 This will intialise a `.venv` folder and install the required dependencies for this project.
 
 If you do not wish to use the `uv` package (though I would highly recommend it as it's really easy to use and wicked fast), you may also simply run 
-```
+```python
 pip install -r requirements.txt
 ```
+To configure accelerate configurations, run 
+```python
+accelerate config
+```
+and follow the prompts in the command line.
 
 To run inference using **ZetaAlign**, run the following terminal command: 
 ```
