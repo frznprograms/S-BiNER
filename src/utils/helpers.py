@@ -2,6 +2,9 @@ import torch
 import random
 from typing import Optional
 from loguru import logger
+from src.models.train import BinaryAlignTrainer
+from configs.model_config import ModelConfig
+from configs.train_config import TrainConfig
 
 
 def delist_the_list(items: list):
@@ -58,3 +61,35 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> None:
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+
+def create_trainer_from_yaml(
+    model_name_or_path: str,
+    model_config_path: str,
+    train_config_path: str,
+    device_type: str = "auto",
+    seed_num: Optional[int] = 42,
+) -> BinaryAlignTrainer:
+    return BinaryAlignTrainer(
+        model_name_or_path=model_name_or_path,
+        model_config_yaml_or_obj=model_config_path,
+        train_config_yaml_or_obj=train_config_path,
+        device_type=device_type,
+        seed_num=seed_num,
+    )
+
+
+def create_trainer_from_objects(
+    model_name_or_path: str,
+    model_config: ModelConfig,
+    train_config: TrainConfig,
+    device_type: str = "auto",
+    seed_num: Optional[int] = 42,
+) -> BinaryAlignTrainer:
+    return BinaryAlignTrainer(
+        model_name_or_path=model_name_or_path,
+        model_config_yaml_or_obj=model_config,
+        train_config_yaml_or_obj=train_config,
+        device_type=device_type,
+        seed_num=seed_num,
+    )
