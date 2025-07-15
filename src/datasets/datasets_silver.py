@@ -5,10 +5,11 @@ import torch
 from loguru import logger
 
 from src.datasets.base_dataset import BaseDataset
+from src.utils.pipeline_step import PipelineStep
 
 
 @dataclass
-class AlignmentDatasetSilver(BaseDataset):
+class AlignmentDatasetSilver(BaseDataset, PipelineStep):
     def __post_init__(self):
         super().__post_init__()
         logger.success(f"{self.__class__.__name__} initialized successfully")

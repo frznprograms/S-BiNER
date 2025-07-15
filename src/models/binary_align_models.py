@@ -6,27 +6,27 @@ from typing import Optional
 from transformers import (
     RobertaModel,
     RobertaPreTrainedModel,
-    RobertaConfig,
     XLMRobertaModel,
     XLMRobertaPreTrainedModel,
-    XLMRobertaConfig,
 )
 from src.models.binary_token_classification import (
     BinaryTokenClassification,
     SpanTokenAlignerOutput,
 )
+from configs.model_config import ModelConfig
 
 
 # TODO: find out if it is better to use RobertaModelForTokenClassification
 # TODO: ensure correct configuration set up for each model
 # -> num_labels, classifier_dropout, hidden_dropout_prob, hidden_size etc.
 # TODO: document shape tracking as tensors move through the model
+# TODO: how to add symmetrisation to the model to avoid data complexity?
 
 
 class RobertaModelForBinaryTokenClassification(
     RobertaPreTrainedModel, BinaryTokenClassification
 ):
-    def __init__(self, config: RobertaConfig):
+    def __init__(self, config: ModelConfig):
         super().__init__(config=config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level
@@ -59,7 +59,7 @@ class RobertaModelForBinaryTokenClassification(
 class XLMRobertaModelForBinaryTokenClassification(
     XLMRobertaPreTrainedModel, BinaryTokenClassification
 ):
-    def __init__(self, config: XLMRobertaConfig):
+    def __init__(self, config: ModelConfig):
         super().__init__(config=config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level

@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
 
 
 class PipelineStep(ABC):
@@ -13,15 +12,4 @@ class PipelineStep(ABC):
 
     @abstractmethod
     def run(self):
-        pass
-
-    def save_checkpoint(self, data: Any, checkpoint_path: Path):
-        # if self.config.save_checkpoint:
-        #     if isinstance(data, pd.DataFrame):
-        #         data.to_csv(checkpoint_path)
-        #     else:
-        #         with open(checkpoint_path, "w") as f:
-        #             json.dump(data, f, indent=4, ensure_ascii=False)
-
-        """Save model parameters?"""
         pass

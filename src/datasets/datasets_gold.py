@@ -6,10 +6,11 @@ from loguru import logger
 from transformers import XLMRobertaTokenizer
 
 from src.datasets.base_dataset import BaseDataset
+from src.utils.pipeline_step import PipelineStep
 
 
 @dataclass
-class AlignmentDatasetGold(BaseDataset):
+class AlignmentDatasetGold(BaseDataset, PipelineStep):
     def __post_init__(self):
         super().__post_init__()
         self.one_indexed = True

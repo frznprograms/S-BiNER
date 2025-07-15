@@ -22,7 +22,7 @@ class BaseDataset(ABC):
     alignments_path: str
     limit: Optional[int] = None
     one_indexed: bool = False
-    context_sep: Optional[str] = " <SEP> "
+    context_sep: Optional[str] = " [WORD_SEP] "
     do_inference: bool = False
     log_output_dir: str = "logs"
     save: bool = False
@@ -84,7 +84,6 @@ class BaseDataset(ABC):
         data: list[dict],
         reverse: bool = False,
     ):
-        """Main data preparation pipeline - handles common workflow"""
         progress_bar = tqdm(total=len(source_lines))
 
         for i, (source_line, target_line, alignment) in enumerate(
@@ -156,7 +155,6 @@ class BaseDataset(ABC):
     def _generate_wbw_examples(
         self, source_line: str, target_line: str
     ) -> tuple[list[list[str]], list[str], list[str]]:
-        """Generate word-by-word examples with context separation"""
         res = []
         source_sentence: list[str]
         target_sentence: list[str]
@@ -183,7 +181,6 @@ class BaseDataset(ABC):
     def _prepare_input_ids(
         self, wbw_examples: list[list[str]], target_sentence: list[str]
     ) -> dict[str, Any]:
-        """Prepare input IDs for source and target sentences"""
         source_tokens: list[list[list[str]]] = [
             [self.tokenizer.tokenize(word) for word in sentence]
             for sentence in wbw_examples
@@ -230,7 +227,6 @@ class BaseDataset(ABC):
         }
 
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
-        """Default implementation for reading data"""
         data = delist_the_list(pd.read_csv(path, sep="\t").values.tolist())
         if limit is None:
             limit = len(data)
@@ -239,7 +235,6 @@ class BaseDataset(ABC):
         return data
 
     def save_data(self, data: Any, save_path: str, format: str = "pt") -> None:
-        """Save data in specified format"""
         if format == "csv":
             data.to_csv(save_path)
         elif format == "pt":
@@ -257,5 +252,4 @@ class BaseDataset(ABC):
         actual_target_len: int,
         reverse: bool = False,
     ):
-        """Abstract method to prepare labels"""
         pass
