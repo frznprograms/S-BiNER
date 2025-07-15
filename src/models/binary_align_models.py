@@ -6,8 +6,10 @@ from typing import Optional
 from transformers import (
     RobertaModel,
     RobertaPreTrainedModel,
+    RobertaConfig,
     XLMRobertaModel,
     XLMRobertaPreTrainedModel,
+    XLMRobertaConfig,
 )
 from src.models.binary_token_classification import (
     BinaryTokenClassification,
@@ -24,7 +26,7 @@ from src.models.binary_token_classification import (
 class RobertaModelForBinaryTokenClassification(
     RobertaPreTrainedModel, BinaryTokenClassification
 ):
-    def __init__(self, config):
+    def __init__(self, config: RobertaConfig):
         super().__init__(config=config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level
@@ -57,7 +59,7 @@ class RobertaModelForBinaryTokenClassification(
 class XLMRobertaModelForBinaryTokenClassification(
     XLMRobertaPreTrainedModel, BinaryTokenClassification
 ):
-    def __init__(self, config):
+    def __init__(self, config: XLMRobertaConfig):
         super().__init__(config=config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level

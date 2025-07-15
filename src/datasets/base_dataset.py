@@ -10,13 +10,12 @@ from loguru import logger
 from tqdm.auto import tqdm
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from configs.logger_config import LoggedProcess
 from src.utils.decorators import timed_execution
 from src.utils.helpers import delist_the_list
 
 
 @dataclass
-class BaseDataset(ABC, LoggedProcess):
+class BaseDataset(ABC):
     tokenizer: PreTrainedTokenizer
     source_lines_path: str
     target_lines_path: str
@@ -29,11 +28,9 @@ class BaseDataset(ABC, LoggedProcess):
     save: bool = False
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
-    # sure: list = field(default_factory=list, init=False) 
+    # sure: list = field(default_factory=list, init=False)
 
     def __post_init__(self):
-        LoggedProcess.__init__(self, output_dir=self.log_output_dir)
-
         self.source_lines = self.read_data(
             path=self.source_lines_path, limit=self.limit
         )

@@ -5,12 +5,11 @@ import torch
 from loguru import logger
 from transformers import XLMRobertaTokenizer
 
-from configs.logger_config import LoggedProcess
 from src.datasets.base_dataset import BaseDataset
 
 
 @dataclass
-class AlignmentDatasetGold(BaseDataset, LoggedProcess):
+class AlignmentDatasetGold(BaseDataset):
     def __post_init__(self):
         super().__post_init__()
         self.one_indexed = True
@@ -56,6 +55,12 @@ class AlignmentDatasetGold(BaseDataset, LoggedProcess):
                     (int(source_idx), int(target_idx))
                     if self.one_indexed
                     else (int(source_idx) - 1, int(target_idx) - 1)
+                )
+
+            # check validity of alignment indices
+            if wsrc < len(target_labels):
+                target_labels[wsrc, :] = torch.where(
+                    target_bpe2word == wtgt, 1, target_labels[wsrc, :]
                 )
 
         # Prepare final data structure

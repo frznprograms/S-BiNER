@@ -51,6 +51,12 @@ class AlignmentDatasetSilver(BaseDataset):
                     else (int(source_idx) - 1, int(target_idx) - 1)
                 )
 
+            # check validity of alignment indices
+            if wsrc < len(target_labels):
+                target_labels[wsrc, :] = torch.where(
+                    target_bpe2word == wtgt, 1, target_labels[wsrc, :]
+                )
+
         # Prepare final data structure
         if self.do_inference:
             # Inference mode - batch structure
