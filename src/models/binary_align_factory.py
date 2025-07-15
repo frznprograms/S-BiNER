@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Union
 
 from loguru import logger
 from transformers import AutoConfig
@@ -15,7 +16,13 @@ class BinaryTokenClassificationFactory:
     model_name_or_path: str
     config: ModelConfig
 
-    def __call__(self):
+    def __call__(
+        self,
+    ) -> Union[
+        XLMRobertaModelForBinaryTokenClassification,
+        RobertaModelForBinaryTokenClassification,
+        None,
+    ]:
         transformer_config = AutoConfig.from_pretrained(self.model_name_or_path)
 
         # Update config with transformer-specific attributes
