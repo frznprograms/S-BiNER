@@ -5,7 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "accelerate>=1.8.1",
     "awesome-align>=0.1.7",
+    "easydict>=1.13",
     "hanlp>=2.1.1",
     "ipykernel>=6.29.5",
     "loguru>=0.7.3",
