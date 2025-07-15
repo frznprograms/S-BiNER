@@ -1,6 +1,6 @@
 # macos/vscode rubbish
 .DS_Store
-
+.vscode
 
 # data
 /data
