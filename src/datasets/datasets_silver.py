@@ -43,8 +43,6 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
                     if self.one_indexed
                     else (int(source_idx) - 1, int(target_idx) - 1)
                 )
-                # alignment_tuple = (wsrc, wtgt)
-                # self.sure[-1].add(alignment_tuple)
             else:
                 wtgt, wsrc = (
                     (int(source_idx), int(target_idx))
