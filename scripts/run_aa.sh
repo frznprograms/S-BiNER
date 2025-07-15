@@ -1,5 +1,6 @@
 #!/bin/bash
 
+export PYTHONHASHSEED=1
 DATA_FILE=../data/cleaned_data/aa_df.csv
 MODEL_NAME_OR_PATH=../models/awesome-align/
 OUTPUT_FILE=../output/awesome_alignments.txt
