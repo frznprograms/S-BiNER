@@ -210,31 +210,14 @@ class BinaryAlignTrainer(PipelineStep):
 
                 pbar.update(1)
 
-            # # Epoch-level evaluation
-            # if self.eval_dataloader is not None:
-            #     eval_loss = self.evaluate()
-            #     logger.info(f"Epoch {epoch + 1} evaluation loss: {eval_loss:.4f}")
+            # Epoch-level evaluation
+            if self.eval_dataloader is not None:
+                self.accelerator.wait_for_everyone()
+                eval_loss = self.evaluate()
+                logger.info(f"Epoch {epoch + 1} evaluation loss: {eval_loss:.4f}")
 
-            #     if self.accelerator.is_main_process:
-            #         self.accelerator.log({"eval_loss": eval_loss, "epoch": epoch})
-
-            #     # Save best model
-            #     if eval_loss < best_eval_loss:
-            #         best_eval_loss = eval_loss
-            #         if self.accelerator.is_main_process:
-            #             logger.info(
-            #                 f"New best model found with eval loss: {eval_loss:.4f}"
-            #             )
-            #             self.save_model(
-            #                 f"{self.model_config.model_save_path}/best_model"
-            #             )
-
-            # # Save model at end of epoch
-            # if self.train_config.save_strategy == "epoch":
-            #     if self.accelerator.is_main_process:
-            #         self.save_model(
-            #             f"{self.model_config.model_save_path}/epoch_{epoch + 1}"
-            #         )
+                if self.accelerator.is_main_process:
+                    self.accelerator.log({"eval_loss": eval_loss, "epoch": epoch})
 
         logger.info("Training completed successfully.")
 
@@ -244,35 +227,8 @@ class BinaryAlignTrainer(PipelineStep):
 
     @logger.catch(message="Failed to complete evaluation.", reraise=True)
     def evaluate(self):
-        if self.model is None:
-            raise RuntimeError("Model not initialized. Cannot perform evaluation.")
-
-        if self.eval_dataloader is None:
-            logger.warning("No evaluation dataloader provided. Skipping evaluation.")
-            return float("inf")
-
+        # TODO: evaluator class
         logger.info("Starting evaluation process...")
-
-        # self.model.eval()
-        # total_eval_loss = 0.0
-        # num_eval_steps = 0
-
-        # with torch.no_grad():
-        #     for batch in self.eval_dataloader:
-        #         outputs = self.model(
-        #             input_ids=batch["input_ids"],
-        #             attention_mask=batch["attention_mask"],
-        #             labels=batch["labels"],
-        #         )
-
-        #         total_eval_loss += outputs.loss.item()
-        #         num_eval_steps += 1
-
-        # avg_eval_loss = total_eval_loss / num_eval_steps
-        # self.model.train()  # Switch back to training mode
-
-        # logger.info("Evaluation completed successfully.")
-        # return avg_eval_loss
 
 
 # TODO: consider wandb integration

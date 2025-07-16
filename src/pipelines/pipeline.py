@@ -14,7 +14,7 @@ from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
 from src.datasets.datasets_gold import AlignmentDatasetGold
 from src.datasets.datasets_silver import AlignmentDatasetSilver
-from src.models.train import BinaryAlignTrainer
+from src.models.binary_align_trainer import BinaryAlignTrainer
 from easydict import EasyDict
 
 
