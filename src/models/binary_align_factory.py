@@ -4,7 +4,7 @@ from typing import Union
 from loguru import logger
 from transformers import AutoConfig
 
-from configs.model_config import ModelConfig
+from src.configs.model_config import ModelConfig
 from src.models.binary_align_models import (
     RobertaModelForBinaryTokenClassification,
     XLMRobertaModelForBinaryTokenClassification,

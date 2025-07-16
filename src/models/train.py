@@ -11,9 +11,9 @@ from tqdm.auto import tqdm
 from transformers.optimization import get_linear_schedule_with_warmup
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from configs.dataset_config import DatasetConfig
-from configs.model_config import ModelConfig
-from configs.train_config import TrainConfig
+from src.configs.dataset_config import DatasetConfig
+from src.configs.model_config import ModelConfig
+from src.configs.train_config import TrainConfig
 from src.datasets.datasets_gold import AlignmentDatasetGold
 from src.datasets.datasets_silver import AlignmentDatasetSilver
 from src.models.binary_align_factory import BinaryTokenClassificationFactory

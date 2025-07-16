@@ -8,10 +8,10 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from configs.dataset_config import DatasetConfig
-from configs.logger_config import LoggedProcess
-from configs.model_config import ModelConfig
-from configs.train_config import TrainConfig
+from src.configs.dataset_config import DatasetConfig
+from src.configs.logger_config import LoggedProcess
+from src.configs.model_config import ModelConfig
+from src.configs.train_config import TrainConfig
 from src.datasets.datasets_gold import AlignmentDatasetGold
 from src.datasets.datasets_silver import AlignmentDatasetSilver
 from src.models.train import BinaryAlignTrainer

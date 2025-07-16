@@ -13,7 +13,7 @@ from src.models.binary_token_classification import (
     BinaryTokenClassification,
     SpanTokenAlignerOutput,
 )
-from configs.model_config import ModelConfig
+from src.configs.model_config import ModelConfig
 
 
 class RobertaModelForBinaryTokenClassification(
