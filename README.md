@@ -1,5 +1,5 @@
 Hi there, welcome to the 
-## S-BiNER
+## BinaryAlign for Chinese
 repository.
 
 ### Description
