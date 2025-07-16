@@ -9,7 +9,7 @@ from easydict import EasyDict
 class TrainConfig(ABC):
     experiment_name: str
     num_train_epochs: int = 5
-    mixed_precision: str = "fp32"
+    mixed_precision: str = "fp16"
     log_with: Optional[str] = "wandb"
     logging_steps: int = 200
     save_strategy: str = "epoch"

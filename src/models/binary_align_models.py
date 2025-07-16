@@ -24,7 +24,7 @@ class RobertaModelForBinaryTokenClassification(
         super().__init__(config=roberta_config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level
-        self.model = RobertaModel(config=config, add_pooling_layer=False)
+        self.model = RobertaModel(config=roberta_config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout
             if config.classifier_dropout is not None
@@ -49,6 +49,12 @@ class RobertaModelForBinaryTokenClassification(
             labels=labels,
         )
 
+    def get_input_embeddings(self):
+        return self.model.get_input_embeddings()
+
+    def set_input_embeddings(self, value):
+        self.model.set_input_embeddings(value)
+
 
 class XLMRobertaModelForBinaryTokenClassification(
     XLMRobertaPreTrainedModel, BinaryTokenClassification
@@ -58,7 +64,7 @@ class XLMRobertaModelForBinaryTokenClassification(
         super().__init__(config=xlm_roberta_config)
         self.num_labels = config.num_labels
         # prevent pooling to get token-level outputs, not sentence-level
-        self.model = XLMRobertaModel(config=config, add_pooling_layer=False)
+        self.model = XLMRobertaModel(config=xlm_roberta_config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout
             if config.classifier_dropout is not None
@@ -81,6 +87,12 @@ class XLMRobertaModelForBinaryTokenClassification(
             attention_mask=attention_mask,
             labels=labels,
         )
+
+    def get_input_embeddings(self):
+        return self.model.get_input_embeddings()
+
+    def set_input_embeddings(self, value):
+        self.model.set_input_embeddings(value)
 
 
 # TODO: find out if it is better to use RobertaModelForTokenClassification

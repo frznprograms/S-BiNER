@@ -28,7 +28,6 @@ class BaseDataset(ABC):
     save: bool = False
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
-    # sure: list = field(default_factory=list, init=False)
 
     def __post_init__(self):
         self.source_lines = self.read_data(

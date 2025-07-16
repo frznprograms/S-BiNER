@@ -1,6 +1,10 @@
 from abc import ABC
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
+
+import torch
+
+from src.utils.helpers import collate_fn_span
 
 
 @dataclass
@@ -13,9 +17,13 @@ class DatasetConfig(ABC):
     context_sep: Optional[str] = " [WORD_SEP] "
     do_inference: bool = False
     log_output_dir: str = "logs"
-    data_type: str = "silver"  # "silver" or "gold"
     save: bool = False
+
+
+@dataclass
+class DataLoaderConfig:
+    collate_fn: Optional[Callable] = collate_fn_span
     batch_size: int = 16
-    num_workers: int = 4
+    num_workers: int = 0
     shuffle: bool = True
-    pin_memory: bool = True
+    pin_memory: bool = not torch.backends.mps.is_available()  # Auto-disable for MPS
