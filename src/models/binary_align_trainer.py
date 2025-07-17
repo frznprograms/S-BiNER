@@ -185,7 +185,7 @@ class BinaryAlignTrainer(PipelineStep):
 
         for epoch in range(self.train_config.num_train_epochs):
             for batch in self.train_dataloader:
-                batch = {k: v.to(self.model.model.device) for k, v in batch.items()}
+                batch = {k: v.to(self.accelerator.device) for k, v in batch.items()}
 
                 loss = self.model(**batch).loss
 

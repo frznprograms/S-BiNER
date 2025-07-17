@@ -63,15 +63,9 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> None:
         torch.backends.cudnn.benchmark = False
 
 
-def collate_fn_span(examples: list[dict], tokenizer: PreTrainedTokenizer):
-    def _get_examples(examples):
-        example1 = []
-        example2 = []
-        for example in examples:
-            example1.append(example[0])
-            example2.append(example[1])
-        return example1, example2
-
+def collate_fn_span(
+    examples: list[dict[str, torch.Tensor]], tokenizer: PreTrainedTokenizer
+) -> dict[str, torch.Tensor]:
     def _produce_batch(examples):
         input_ids = [torch.tensor(x["input_ids"]) for x in examples]
         attention_mask = [torch.tensor(x["attention_mask"]) for x in examples]
@@ -80,7 +74,7 @@ def collate_fn_span(examples: list[dict], tokenizer: PreTrainedTokenizer):
         input_ids = pad_sequence(
             input_ids,
             batch_first=True,
-            padding_value=tokenizer.pad_token_id,  # type:ignore
+            padding_value=tokenizer.pad_token_id,  # type: ignore
         )
         attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
         labels = pad_sequence(labels, batch_first=True, padding_value=-100)
@@ -91,14 +85,4 @@ def collate_fn_span(examples: list[dict], tokenizer: PreTrainedTokenizer):
             "labels": labels,
         }
 
-    if isinstance(examples[0], tuple):
-        examples1, examples2 = _get_examples(examples)
-        batch1 = _produce_batch(examples1)
-        batch2 = _produce_batch(examples2)
-    else:
-        return _produce_batch(examples)
-
-    return {
-        **{f"{key}1": value for key, value in batch1.items()},
-        **{f"{key}2": value for key, value in batch2.items()},
-    }
+    return _produce_batch(examples)
