@@ -6,6 +6,7 @@ from loguru import logger
 
 from src.datasets.base_dataset import BaseDataset
 from src.utils.pipeline_step import PipelineStep
+from src.utils.helpers import parse_single_alignment
 
 
 @dataclass
@@ -31,24 +32,32 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
         )
         labels = torch.cat((source_labels, target_labels), dim=1)
 
+        if not reverse:
+            self.sure.append(set())
+            self.possible.append(set())
+
+        if isinstance(alignment, set):
+            alignment_str = " ".join(f"{src}-{tgt}" for src, tgt in alignment)
+        elif isinstance(alignment, str):
+            alignment_str = alignment
+        else:
+            raise ValueError(f"Unrecognized alignment type: {type(alignment)}")
+
         # Process alignment pairs
-        for source_target_pair in alignment.strip().split():
-            src_tgt_label = source_target_pair.split("-")
-            source_idx = src_tgt_label[0]
-            target_idx = src_tgt_label[1]
+        for source_target_pair in alignment_str.strip().split():
+            # account for possible alignments, if any
+            sure_alignment = "-" in source_target_pair
+            if not sure_alignment and self.ignore_possible_alignments:
+                continue
+
+            wsrc, wtgt = parse_single_alignment(
+                source_target_pair, one_indexed=self.one_indexed, reverse=reverse
+            )
 
             if not reverse:
-                wsrc, wtgt = (
-                    (int(source_idx), int(target_idx))
-                    if self.one_indexed
-                    else (int(source_idx) - 1, int(target_idx) - 1)
-                )
-            else:
-                wtgt, wsrc = (
-                    (int(source_idx), int(target_idx))
-                    if self.one_indexed
-                    else (int(source_idx) - 1, int(target_idx) - 1)
-                )
+                if sure_alignment:
+                    self.sure[-1].add((wsrc, wtgt))
+                self.possible[-1].add((wsrc, wtgt))
 
             # check validity of alignment indices
             if wsrc < len(target_labels):
@@ -58,6 +67,9 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
 
         # Prepare final data structure
         if self.do_inference:
+            assert source_bpe2word.dim() == 1 and target_bpe2word.dim() == 1, (
+                f"source_bpe2word shape: {source_bpe2word.shape}, target_bpe2word shape: {target_bpe2word.shape}"
+            )
             # Inference mode - batch structure
             bpe2word_map = torch.cat((source_bpe2word, target_bpe2word), dim=0)
             data.append(
