@@ -17,6 +17,7 @@ from src.configs.train_config import TrainConfig
 from src.datasets.datasets_gold import AlignmentDatasetGold
 from src.datasets.datasets_silver import AlignmentDatasetSilver
 from src.models.binary_align_factory import BinaryTokenClassificationFactory
+from src.models.binary_align_eval import BinaryAlignEvaluator
 from src.utils.decorators import timed_execution
 from src.utils.helpers import collate_fn_span, set_device, set_seeds
 from src.utils.pipeline_step import PipelineStep
@@ -33,22 +34,23 @@ class BinaryAlignTrainer(PipelineStep):
     eval_data: Optional[Union[AlignmentDatasetGold, AlignmentDatasetSilver]] = None
     device_type: str = "auto"
     seed_num: int = 42
+    priority_metric_for_optimisation: Optional[str] = "aer"
 
     def __post_init__(self):
         logger.info("Initialising BinaryAlignTrainer...")
         # Device and seed setup
         self.user_defined_device = set_device(self.device_type)
         self.SEED = set_seeds(self.seed_num)
-        logger.success(f"Set device to {self.user_defined_device}.")
-        logger.success(f"Set seed to {self.SEED}.")
+        logger.info(f"Set device to {self.user_defined_device}.")
+        logger.info(f"Set seed to {self.SEED}.")
 
         self.train_config = EasyDict(self.train_config.__dict__)  # type: ignore
         self.model_config = EasyDict(self.model_config.__dict__)  # type: ignore
         self.dataset_config = EasyDict(self.dataset_config.__dict__)  # type: ignore
         self.dataloader_config = EasyDict(self.dataloader_config.__dict__)  # type: ignore
-        self.train_dataloader, self.eval_dataloader = None, None
+        self.train_dataloader, self.eval_dataloader, self.evaluator = None, None, None
 
-        logger.success("Loaded configuration objects.")
+        logger.info("Loaded configuration objects.")
 
         # Initialize model factory
         self.model_factory = BinaryTokenClassificationFactory(
@@ -163,7 +165,7 @@ class BinaryAlignTrainer(PipelineStep):
         # Training loop
         logger.info("Starting training loop...")
         self.accelerator.wait_for_everyone()
-        self.accelerator.print("*" * 50)
+        self.accelerator.print("=" * 50)
         self.accelerator.print(" Num examples = ", len(self.train_data))
         self.accelerator.print(" Num Epochs = ", self.train_config.num_train_epochs)
         self.accelerator.print(
@@ -173,7 +175,7 @@ class BinaryAlignTrainer(PipelineStep):
             " Total batches per epoch = ", len(self.train_dataloader)
         )
         self.accelerator.print(" Total optimization steps = ", number_of_steps)
-        self.accelerator.print("*" * 50)
+        self.accelerator.print("=" * 50)
 
         pbar = tqdm(
             total=number_of_steps,
@@ -181,7 +183,7 @@ class BinaryAlignTrainer(PipelineStep):
         )
         global_step, globalstep_last_logged = 0, 0
         total_loss_scalar = 0.0
-        best_aer = 100
+        # priority_metric_for_optimisation = 100
 
         for epoch in range(self.train_config.num_train_epochs):
             for batch in self.train_dataloader:
@@ -208,9 +210,9 @@ class BinaryAlignTrainer(PipelineStep):
                     if self.accelerator.is_main_process:
                         self.accelerator.log(
                             {
+                                "epoch": epoch,
                                 "train_loss": tr_loss,
                                 "learning_rate": scheduler.get_last_lr()[0],
-                                "epoch": epoch,
                                 "step": global_step,
                             }
                         )
@@ -232,7 +234,7 @@ class BinaryAlignTrainer(PipelineStep):
                                 {"eval_loss": eval_loss, "epoch": epoch}
                             )
                 except Exception as e:
-                    logger.warning(f"Evaluation failed: {e}")
+                    logger.error(f"Evaluation failed: {e}")
 
         pbar.close()
         logger.success("Training completed successfully.")
@@ -241,9 +243,32 @@ class BinaryAlignTrainer(PipelineStep):
         self.accelerator.end_training()
         self.accelerator.free_memory()
 
-    @logger.catch(message="Failed to complete evaluation.", reraise=True)
+    @logger.catch(message="Failed to perform evaluation.", reraise=True)
     def evaluate(self):
-        return None
+        if not self.evaluator:
+            self.evaluator = BinaryAlignEvaluator()
+
+        # Use default or configured values
+        threshold = getattr(self.model_config, "threshold", 0.7)
+        combine_type = getattr(
+            self.model_config, "bidirectional_combine_type", "intersection"
+        )
+        tk2word_prob = getattr(self.model_config, "tk2word_prob", "mean")
+
+        # Sure alignments only
+        sure = self.eval_data.alignment_sure  # type:ignore expected: list[set[tuple[int, int]]]
+
+        return self.evaluator.run(
+            dataloader=self.eval_dataloader,  # type: ignore
+            model=self.model,  # type: ignore
+            threshold=threshold,
+            sure=sure,
+            possible=None,  # <- hardcoded
+            device=self.accelerator.device,
+            mini_batch_size=self.model_config.batch_size,
+            bidirectional_combine_type=combine_type,
+            tk2word_prob=tk2word_prob,
+        )
 
 
 # TODO: consider wandb integration
@@ -265,6 +290,7 @@ if __name__ == "__main__":
         target_lines_path="data/cleaned_data/dev.tgt",
         alignments_path="data/cleaned_data/dev.talp",
         limit=5,
+        do_inference=True,
     )
     dataloader_config = DataLoaderConfig(collate_fn=collate_fn_span)
     tok = AutoTokenizer.from_pretrained(model_config.model_name_or_path)

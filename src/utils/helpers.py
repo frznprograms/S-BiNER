@@ -86,3 +86,19 @@ def collate_fn_span(
         }
 
     return _produce_batch(examples)
+
+
+@logger.catch(message="Unable to parse an alignment.", reraise=True)
+def parse_single_alignment(string, one_indexed=False, reverse: bool = False):
+    assert ("-" in string or "p" in string) and "Bad Alignment separator"
+    a, b = string.replace("p", "-").split("-")
+    a, b = int(a), int(b)
+
+    if one_indexed:
+        a = a - 1
+        b = b - 1
+
+    if reverse:
+        return b, a
+    else:
+        return a, b

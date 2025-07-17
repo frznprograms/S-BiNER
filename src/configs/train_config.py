@@ -11,7 +11,7 @@ class TrainConfig(ABC):
     num_train_epochs: int = 5
     mixed_precision: str = "fp16"
     log_with: Optional[str] = "wandb"
-    logging_steps: int = 200
+    logging_steps: int = 100
     save_strategy: str = "epoch"
     save_steps: Optional[int] = None
     eval_strategy: str = "epoch"
