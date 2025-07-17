@@ -26,6 +26,9 @@ class BaseDataset(ABC):
     do_inference: bool = False
     log_output_dir: str = "logs"
     save: bool = False
+    ignore_possible_alignments: bool = True
+    sure: list = field(default_factory=list, init=False)
+    possible: list = field(default_factory=list, init=False)
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
 
@@ -37,6 +40,7 @@ class BaseDataset(ABC):
             path=self.target_lines_path, limit=self.limit
         )
         self.alignments = self.read_data(path=self.alignments_path, limit=self.limit)
+        self.sure, self.possible = [], []
 
         logger.info("Preparing dataset...")
         self.run()
@@ -57,6 +61,14 @@ class BaseDataset(ABC):
             return self.data[item], self.reverse_data[item]
         else:
             return self.data[item]
+
+    @property
+    def alignment_sure(self) -> list[set[tuple[int, int]]]:
+        # Convert string like "0-0 1-2" into {(0, 0), (1, 2)} for each line in your .talp file
+        return [
+            {tuple(map(int, pair.split("-"))) for pair in line.strip().split()}
+            for line in self.sure
+        ]  # type: ignore
 
     def run(self):
         self.prepare_data(
@@ -112,7 +124,16 @@ class BaseDataset(ABC):
             )
 
             # Prepare BPE to word mappings
-            source_bpe2word = torch.ones_like(input_id_dict["source_input_ids"]) * -1
+            if self.do_inference:
+                # For inference, we need 1D tensors
+                # Create a single source_bpe2word mapping for the entire sequence
+                source_len = input_id_dict["source_input_ids"].shape[1]
+                source_bpe2word = torch.ones(source_len) * -1
+            else:
+                # For training, keep the 2D structure
+                source_bpe2word = (
+                    torch.ones_like(input_id_dict["source_input_ids"]) * -1
+                )
             target_bpe2word = self._create_target_bpe2word_mapping(input_id_dict)
 
             # Adjust target_bpe2word to match actual target length
