@@ -13,7 +13,7 @@ def timed_execution(func):
         minutes = int((elapsed_seconds % 3600) // 60)
         seconds = elapsed_seconds % 60
 
-        logger.success(
+        logger.info(
             f"Function executed in: {hours} hours, {minutes} minutes, {seconds:.3f} seconds"
         )
         return result

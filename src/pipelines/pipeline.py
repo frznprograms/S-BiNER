@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from src.configs.dataset_config import DatasetConfig
+from src.configs.dataset_config import DatasetConfig, DataLoaderConfig
 from src.configs.logger_config import LoggedProcess
 from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
@@ -23,6 +23,7 @@ class AlignmentGenerationPipeline(LoggedProcess):
     model_config: Union[ModelConfig, str, dict]
     train_config: Union[TrainConfig, str, dict]
     dataset_config: Union[DatasetConfig, str, dict]
+    dataloader_config: Union[DataLoader, str, dict]
     tokenizer: Optional[PreTrainedTokenizer] = None
     log_output_dir: str = "logs"
 
@@ -32,8 +33,8 @@ class AlignmentGenerationPipeline(LoggedProcess):
     _dataset_config: DatasetConfig = field(init=False)
     _tokenizer: PreTrainedTokenizer = field(init=False)
     _dataset: Union[AlignmentDatasetSilver, AlignmentDatasetGold] = field(init=False)
-    _train_dataloader: DataLoader = field(init=False)
-    _eval_dataloader: Optional[DataLoader] = field(init=False, default=None)
+    # _train_dataloader: DataLoader = field(init=False)
+    # _eval_dataloader: Optional[DataLoader] = field(init=False, default=None)
 
     def __post_init__(self):
         LoggedProcess.__init__(self, output_dir=self.log_output_dir)
@@ -41,7 +42,10 @@ class AlignmentGenerationPipeline(LoggedProcess):
         # Parse all configurations
         self._model_config = self._parse_config(self.model_config, ModelConfig)  # type:ignore
         self._train_config = self._parse_config(self.train_config, TrainConfig)  # type:ignore
-        self._dataset_config = self._parse_config(self.dataset_config, DatasetConfig)  # type:ignore
+        self._dataset_config = self._parse_config(self.dataset_config, DatasetConfig)  # type: ignore
+        self._dataloader_config = self._parse_config(
+            self.dataloader_config, DataLoaderConfig
+        )
         logger.success("Loaded configurations.")
 
         self._initialize_tokenizer()
@@ -99,9 +103,7 @@ class AlignmentGenerationPipeline(LoggedProcess):
             save=self._dataset_config.save,
         )
 
-        logger.success(
-            f"Dataset ({self._dataset_config.data_type}) initialized successfully"
-        )
+        logger.success("Dataset initialized successfully")
 
     @logger.catch(message="Unable to get dataset class.", reraise=True)
     def _get_dataset_class(self, data_type: str):
@@ -123,6 +125,7 @@ class AlignmentGenerationPipeline(LoggedProcess):
             model_config=self._model_config,
             train_config=self._train_config,
             dataset_config=self._dataset_config,
+            dataloader_config=self._dataloader_config,
             train_data=self._train_dataloader,
             eval_data=self._eval_dataloader,
         )

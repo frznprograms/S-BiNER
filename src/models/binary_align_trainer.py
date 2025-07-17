@@ -32,7 +32,7 @@ class BinaryAlignTrainer(PipelineStep):
     train_data: Union[AlignmentDatasetGold, AlignmentDatasetSilver]
     eval_data: Optional[Union[AlignmentDatasetGold, AlignmentDatasetSilver]] = None
     device_type: str = "auto"
-    seed_num: Optional[int] = 42
+    seed_num: int = 42
 
     def __post_init__(self):
         logger.info("Initialising BinaryAlignTrainer...")
@@ -234,8 +234,8 @@ class BinaryAlignTrainer(PipelineStep):
                 except Exception as e:
                     logger.warning(f"Evaluation failed: {e}")
 
-        logger.info("Training completed successfully.")
         pbar.close()
+        logger.success("Training completed successfully.")
 
         # End of training cleanup
         self.accelerator.end_training()
@@ -243,7 +243,6 @@ class BinaryAlignTrainer(PipelineStep):
 
     @logger.catch(message="Failed to complete evaluation.", reraise=True)
     def evaluate(self):
-        # TODO: evaluator class
         return None
 
 
@@ -259,7 +258,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=50,
+        limit=25,
     )
     eval_dataset_config = DatasetConfig(
         source_lines_path="data/cleaned_data/dev.src",
