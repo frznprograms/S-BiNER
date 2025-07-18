@@ -187,7 +187,6 @@ class BinaryAlignTrainer(PipelineStep):
         )
         global_step, global_step_last_logged = 0, 0
         total_loss_scalar = 0.0
-        # priority_metric_for_optimisation = 100
 
         for epoch in range(self.train_config.num_train_epochs):
             for batch in self.train_dataloader:
@@ -228,11 +227,21 @@ class BinaryAlignTrainer(PipelineStep):
             if self.eval_data is not None and hasattr(self, "eval_dataloader"):
                 try:
                     self.accelerator.wait_for_everyone()
-                    precision, recall, aer, f1 = self.evaluate()
-                    if f1 is not None:
-                        logger.debug(f"Epoch {epoch + 1} evaluation loss: {f1:.4f}")
+                    metrics = self.evaluate()
+                    if metrics is not None:
+                        logger.info(
+                            f"Epoch {epoch + 1} | Precision: {metrics[0]:.4f}, Recall: {metrics[0]:.4f}, AER: {metrics[0]:.4f}, F1: {metrics[0]:.4f}"
+                        )
                         if self.accelerator.is_main_process:
-                            self.accelerator.log({"eval_loss": f1, "epoch": epoch})
+                            self.accelerator.log(
+                                {
+                                    "epoch": epoch,
+                                    "precision": metrics[0],
+                                    "recall": metrics[1],
+                                    "aer": metrics[2],
+                                    "f1": metrics[3],
+                                }
+                            )
                 except Exception as e:
                     logger.error(f"Evaluation failed: {e}")
                     break
