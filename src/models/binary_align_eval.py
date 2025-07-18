@@ -1,12 +1,11 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Union, Optional
+from typing import Callable, Union
 
 import torch
 import torch.nn as nn
 from loguru import logger
 from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
 
 from src.models.binary_align_models import (
     RobertaModelForBinaryTokenClassification,
@@ -38,14 +37,12 @@ class BinaryAlignEvaluator(PipelineStep):
         mini_batch_size: int,
         bidirectional_combine_type: str,
         tk2word_prob: str,
-        possible: Optional[list[set[tuple[int, int]]]] = None,
     ):
         return self._bidirectional_eval_span(
             dataloader=dataloader,
             model=model,
             threshold=threshold,
             sure=sure,
-            possible=possible,
             device=device,
             mini_batch_size=mini_batch_size,
             bidirectional_combine_type=bidirectional_combine_type,
@@ -61,18 +58,14 @@ class BinaryAlignEvaluator(PipelineStep):
         sure: list[set[tuple[int, int]]],
         device: str,
         mini_batch_size: int,
-        possible: Optional[list[set[tuple[int, int]]]] = None,
         bidirectional_combine_type: str = "intersection",
         tk2word_prob: str = "mean",
     ) -> tuple[float, float, float, float]:
         model.eval()
-        logger.info("Running evaluations...")
 
         predicted_sure = []
-        predicted_possible = []
-        possible_threshold = max(0.1, threshold)
 
-        for sample in tqdm(dataloader):
+        for sample in dataloader:
             if isinstance(sample, list):  # Bidirectional eval
                 sample_1, sample_2 = sample
                 sample_preds_1 = self._get_sample_probs(
@@ -92,23 +85,11 @@ class BinaryAlignEvaluator(PipelineStep):
             sure_set = {k for k, v in all_probs.items() if v >= threshold}
             predicted_sure.append(sure_set)
 
-            if possible is not None:
-                possible_set = {
-                    k
-                    for k, v in all_probs.items()
-                    if possible_threshold <= v < threshold
-                }
-                predicted_possible.append(possible_set)
-
         metrics = self.calculate_metrics(
-            sure,
-            predicted_sure,
-            possible,
-            predicted_possible,
+            gold_sure=sure,
+            pred_sure=predicted_sure,
         )
-        logger.info(
-            f"AER: {metrics[2]:.4f}, Precision: {metrics[0]:.4f}, Recall: {metrics[1]:.4f}, F1: {metrics[3]:.4f}"
-        )
+
         model.train()
         return metrics
 
@@ -127,21 +108,14 @@ class BinaryAlignEvaluator(PipelineStep):
         sigmoid: Callable = nn.Sigmoid(),
     ) -> dict[tuple[int, int], float]:
         sample_preds = defaultdict(list)
+        if sample["input_ids"].dim() == 3:
+            sample["input_ids"] = sample["input_ids"].squeeze(0)
+            sample["attention_mask"] = sample["attention_mask"].squeeze(0)
+            if "bpe2word_map" in sample:
+                sample["bpe2word_map"] = sample["bpe2word_map"].squeeze(0)
         all_input_ids = sample["input_ids"].split(mini_batch_size)
         all_attention_mask = sample["attention_mask"].split(mini_batch_size)
-
-        # Handle missing bpe2word_map gracefully
-        if "bpe2word_map" not in sample:
-            logger.warning("bpe2word_map not found in sample, creating dummy mapping")
-            # Create a simple dummy mapping based on sequence length
-            seq_len = sample["input_ids"].shape[1]
-            bpe2word_map = (
-                torch.arange(seq_len)
-                .unsqueeze(0)
-                .repeat(sample["input_ids"].shape[0], 1)
-            )
-        else:
-            bpe2word_map = sample["bpe2word_map"]
+        bpe2word_map = sample["bpe2word_map"]
 
         bpe2word_map = bpe2word_map.split(mini_batch_size)
         count = 0
@@ -152,7 +126,7 @@ class BinaryAlignEvaluator(PipelineStep):
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)
 
-            with torch.no_grad():  # Add no_grad for evaluation
+            with torch.no_grad():
                 logits = model(input_ids, attention_mask=attention_mask).logits
 
             if logits.shape[2] == 2:
@@ -162,9 +136,13 @@ class BinaryAlignEvaluator(PipelineStep):
 
             for batch_idx in range(probs.size(0)):
                 sentence_probs = probs[batch_idx]
-                bpe2word = bpe2word_batch[batch_idx].tolist()
 
-                # Handle potential length mismatches
+                # account for 1D case
+                if bpe2word_batch.dim() == 1:
+                    bpe2word = bpe2word_batch.tolist()
+                else:
+                    bpe2word = bpe2word_batch[batch_idx].tolist()
+
                 min_len = min(len(sentence_probs), len(bpe2word))
                 for word_number in range(min_len):
                     word_prob = sentence_probs[word_number]
@@ -206,49 +184,23 @@ class BinaryAlignEvaluator(PipelineStep):
             return {}
 
     @logger.catch(message="Unable to calculate metrics", reraise=True)
-    def calculate_metrics(
-        self,
-        gold_sure: list[set[tuple[int, int]]],
-        pred_sure: list[set[tuple[int, int]]],
-        gold_possible: Optional[list[set[tuple[int, int]]]] = None,
-        pred_possible: Optional[list[set[tuple[int, int]]]] = None,
-    ) -> tuple[float, float, float, float]:
-        assert len(gold_sure) == len(pred_sure), (
-            f"Length mismatch: {len(gold_sure)} vs {len(pred_sure)}"
-        )
-        if gold_possible is not None:
-            assert len(gold_possible) == len(gold_sure)
-        if pred_possible is not None:
-            assert len(pred_possible) == len(pred_sure)
+    def calculate_metrics(self, gold_sure, pred_sure):
+        sum_a = 0.0  # total predicted alignments
+        sum_s = 0.0  # total gold (sure) alignments
+        sum_a_intersect_s = 0.0  # correctly predicted alignments
 
-        sum_a, sum_s = 0.0, 0.0
-        sum_a_intersect_p, sum_a_intersect_s = 0.0, 0.0
-
-        for i in range(len(gold_sure)):
-            S = gold_sure[i]
-            P = gold_possible[i] if gold_possible is not None else set()
-            A_sure = pred_sure[i]
-            A_possible = pred_possible[i] if pred_possible is not None else set()
-
-            A = A_sure.union(A_possible)  # full prediction set
+        for S, A in zip(gold_sure, pred_sure):
             sum_a += len(A)
             sum_s += len(S)
             sum_a_intersect_s += len(A & S)
-            sum_a_intersect_p += len(A & (S | P))  # only matters if P exists
 
-        if sum_a == 0:
-            precision = 0.0
-            recall = 0.0
-            aer = 1.0
-        else:
-            precision = sum_a_intersect_p / sum_a
-            recall = sum_a_intersect_s / sum_s if sum_s > 0 else 0.0
-            aer = 1.0 - ((sum_a_intersect_s + sum_a_intersect_p) / (sum_s + sum_a))
-
-        f1_score = (
-            2 * precision * recall / (precision + recall)
-            if precision + recall > 0
+        precision = sum_a_intersect_s / sum_a if sum_a != 0 else 0.0
+        recall = sum_a_intersect_s / sum_s if sum_s != 0 else 0.0
+        aer_denom = sum_a + sum_s
+        aer = 1.0 - (sum_a_intersect_s / aer_denom) if aer_denom > 0 else 1.0
+        f1 = (
+            (2 * precision * recall / (precision + recall))
+            if (precision + recall) > 0
             else 0.0
         )
-
-        return precision, recall, aer, f1_score
+        return precision, recall, aer, f1

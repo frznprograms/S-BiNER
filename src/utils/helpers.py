@@ -64,7 +64,9 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> None:
 
 
 @logger.catch(message="Unable to execute dataloader collate function", reraise=True)
-def collate_fn_span(examples, tokenizer):
+def collate_fn_span(
+    examples, tokenizer: PreTrainedTokenizer, do_inference: bool = True
+):
     def ensure_tensor(x):
         return x if isinstance(x, torch.Tensor) else torch.tensor(x, dtype=torch.long)
 
@@ -88,7 +90,7 @@ def collate_fn_span(examples, tokenizer):
     input_ids = pad_sequence(
         [x["input_ids"] for x in flat],
         batch_first=True,
-        padding_value=tokenizer.pad_token_id,
+        padding_value=tokenizer.pad_token_id,  # type:ignore
     )
     attention_mask = pad_sequence(
         [x["attention_mask"] for x in flat],
@@ -102,10 +104,10 @@ def collate_fn_span(examples, tokenizer):
     )
 
     return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "labels": labels,
-    }
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
 
 
 @logger.catch(message="Unable to parse an alignment.", reraise=True)

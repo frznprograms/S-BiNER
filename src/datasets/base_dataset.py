@@ -26,9 +26,7 @@ class BaseDataset(ABC):
     do_inference: bool = False
     log_output_dir: str = "logs"
     save: bool = False
-    ignore_possible_alignments: bool = True
     sure: list = field(default_factory=list, init=False)
-    possible: list = field(default_factory=list, init=False)
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
 
@@ -40,7 +38,6 @@ class BaseDataset(ABC):
             path=self.target_lines_path, limit=self.limit
         )
         self.alignments = self.read_data(path=self.alignments_path, limit=self.limit)
-        self.sure, self.possible = [], []
 
         logger.debug("Preparing dataset...")
         self.run()

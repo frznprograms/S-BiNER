@@ -31,16 +31,18 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
         actual_target_len: int,
         reverse: bool = False,
     ):
+        # Create empty labels
         source_labels = torch.ones_like(input_id_dict["source_input_ids"]) * -100
         target_labels = torch.zeros(
             len(input_id_dict["source_input_ids"]), actual_target_len
         )
         labels = torch.cat((source_labels, target_labels), dim=1)
 
+        # Track gold alignment labels (used in metrics)
         if not reverse:
             self.sure.append(set())
-            self.possible.append(set())
 
+        # Standardize alignment string format
         if isinstance(alignment, set):
             alignment_str = " ".join(f"{src}-{tgt}" for src, tgt in alignment)
         elif isinstance(alignment, str):
@@ -48,35 +50,33 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
         else:
             raise ValueError(f"Unrecognized alignment type: {type(alignment)}")
 
-        # Process alignment pairs
+        # Fill label matrix from alignment pairs
         for source_target_pair in alignment_str.strip().split():
-            # account for possible alignments, if any
             sure_alignment = "-" in source_target_pair
-            if not sure_alignment and self.ignore_possible_alignments:
-                continue
 
             wsrc, wtgt = parse_single_alignment(
-                source_target_pair, one_indexed=self.one_indexed, reverse=reverse
+                source_target_pair,
+                one_indexed=self.one_indexed,
+                reverse=reverse,
             )
 
             if not reverse:
                 if sure_alignment:
                     self.sure[-1].add((wsrc, wtgt))
-                self.possible[-1].add((wsrc, wtgt))
 
-            # check validity of alignment indices
             if wsrc < len(target_labels):
                 target_labels[wsrc, :] = torch.where(
                     target_bpe2word == wtgt, 1, target_labels[wsrc, :]
                 )
 
-        # Prepare final data structure
-        bpe2word_map = torch.cat((source_bpe2word.view(-1), target_bpe2word), dim=0)
-
+        # Inference mode: single batch structure + bpe2word map
         if self.do_inference:
-            # Inference mode - batch structure
-            assert source_bpe2word.dim() == 1 and target_bpe2word.dim() == 1, (
-                "Source and Target bpe2word do not match!"
+            # Ensure both are 1D tensors before concatenation
+            assert source_bpe2word.dim() == 1, (
+                f"Expected 1D source_bpe2word, got {source_bpe2word.shape}"
+            )
+            assert target_bpe2word.dim() == 1, (
+                f"Expected 1D target_bpe2word, got {target_bpe2word.shape}"
             )
 
             bpe2word_map = torch.cat((source_bpe2word, target_bpe2word), dim=0)
@@ -85,11 +85,11 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
                     "input_ids": input_ids,
                     "attention_mask": torch.ones_like(input_ids),
                     "labels": labels,
-                    "bpe2word_map": bpe2word_map,  # Needed for decoding alignments
+                    "bpe2word_map": bpe2word_map,
                 }
             )
         else:
-            # Training mode - individual examples
+            # Training mode: expand into individual token-level examples
             for input_id, label in zip(input_ids.tolist(), labels.tolist()):
                 data.append(
                     {

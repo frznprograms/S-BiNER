@@ -159,9 +159,9 @@ class BinaryAlignTrainer(PipelineStep):
                 self.eval_data.data,  # type:ignore
                 # **self.dataloader_config,  # type:ignore
                 batch_size=1,
-                num_workers=0,
-                shuffle=True,
-                pin_memory=False,
+                num_workers=self.dataloader_config.num_workers,
+                shuffle=self.dataloader_config.shuffle,
+                pin_memory=self.dataloader_config.pin_memory,
             )
             self.eval_dataloader = self.accelerator.prepare(self.eval_dataloader)
         logger.success("Accelerator prepared training components.")
@@ -185,7 +185,7 @@ class BinaryAlignTrainer(PipelineStep):
             total=number_of_steps,
             disable=not self.accelerator.is_local_main_process,
         )
-        global_step, globalstep_last_logged = 0, 0
+        global_step, global_step_last_logged = 0, 0
         total_loss_scalar = 0.0
         # priority_metric_for_optimisation = 100
 
@@ -207,9 +207,9 @@ class BinaryAlignTrainer(PipelineStep):
                 # Logging
                 if global_step % self.train_config.logging_steps == 0:
                     tr_loss = round(
-                        total_loss_scalar / (global_step - globalstep_last_logged), 4
+                        total_loss_scalar / (global_step - global_step_last_logged), 4
                     )
-                    globalstep_last_logged = global_step
+                    global_step_last_logged = global_step
                     total_loss_scalar = 0.0
                     if self.accelerator.is_main_process:
                         self.accelerator.log(
@@ -228,18 +228,14 @@ class BinaryAlignTrainer(PipelineStep):
             if self.eval_data is not None and hasattr(self, "eval_dataloader"):
                 try:
                     self.accelerator.wait_for_everyone()
-                    eval_loss = self.evaluate()
-                    if eval_loss is not None:
-                        logger.debug(
-                            f"Epoch {epoch + 1} evaluation loss: {eval_loss:.4f}"
-                        )
+                    precision, recall, aer, f1 = self.evaluate()
+                    if f1 is not None:
+                        logger.debug(f"Epoch {epoch + 1} evaluation loss: {f1:.4f}")
                         if self.accelerator.is_main_process:
-                            self.accelerator.log(
-                                {"eval_loss": eval_loss, "epoch": epoch}
-                            )
+                            self.accelerator.log({"eval_loss": f1, "epoch": epoch})
                 except Exception as e:
                     logger.error(f"Evaluation failed: {e}")
-                    break  # TODO: remove after evaluation is working again
+                    break
 
         pbar.close()
         logger.success("Training completed successfully.")
@@ -268,7 +264,6 @@ class BinaryAlignTrainer(PipelineStep):
             model=self.model,  # type: ignore
             threshold=threshold,
             sure=sure,
-            possible=None,  # <- hardcoded
             device=self.accelerator.device,
             mini_batch_size=self.model_config.batch_size,
             bidirectional_combine_type=combine_type,
