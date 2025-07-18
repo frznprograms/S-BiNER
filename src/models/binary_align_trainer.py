@@ -37,12 +37,12 @@ class BinaryAlignTrainer(PipelineStep):
     priority_metric_for_optimisation: Optional[str] = "aer"
 
     def __post_init__(self):
-        logger.info("Initialising BinaryAlignTrainer...")
+        logger.debug("Initialising BinaryAlignTrainer...")
         # Device and seed setup
         self.user_defined_device = set_device(self.device_type)
         self.SEED = set_seeds(self.seed_num)
-        logger.info(f"Set device to {self.user_defined_device}.")
-        logger.info(f"Set seed to {self.SEED}.")
+        logger.debug(f"Set device to {self.user_defined_device}.")
+        logger.debug(f"Set seed to {self.SEED}.")
 
         self.train_config = EasyDict(self.train_config.__dict__)  # type: ignore
         self.model_config = EasyDict(self.model_config.__dict__)  # type: ignore
@@ -50,7 +50,7 @@ class BinaryAlignTrainer(PipelineStep):
         self.dataloader_config = EasyDict(self.dataloader_config.__dict__)  # type: ignore
         self.train_dataloader, self.eval_dataloader, self.evaluator = None, None, None
 
-        logger.info("Loaded configuration objects.")
+        logger.debug("Loaded configuration objects.")
 
         # Initialize model factory
         self.model_factory = BinaryTokenClassificationFactory(
@@ -66,9 +66,9 @@ class BinaryAlignTrainer(PipelineStep):
     @timed_execution
     @logger.catch(message="Failed to complete training.", reraise=True)
     def run(self):
-        logger.info("Starting training...")
+        logger.debug("Starting training...")
 
-        logger.info("Initialising accelerator...")
+        logger.debug("Initialising accelerator...")
         self.accelerator = Accelerator(
             mixed_precision=self.train_config.mixed_precision,
             log_with=self.train_config.log_with,
@@ -90,7 +90,7 @@ class BinaryAlignTrainer(PipelineStep):
 
         # Check if model is pretrained and handle special tokens
         if not self.model_config.is_pretrained:
-            logger.info("Adding special context token...")
+            logger.debug("Adding special context token...")
             special_tokens_dict = {
                 "additional_special_tokens": [self.dataset_config.context_sep]
             }
@@ -112,7 +112,7 @@ class BinaryAlignTrainer(PipelineStep):
         )
         warmup_steps = int(self.model_config.warmup_ratio * number_of_steps)
 
-        logger.info("Initialising optimizer...")
+        logger.debug("Initialising optimizer...")
         # Setup optimizer
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
@@ -139,14 +139,14 @@ class BinaryAlignTrainer(PipelineStep):
         )
         logger.success("Optimizer initialised.")
 
-        logger.info("Initialising learning rate scheduler.")
+        logger.debug("Initialising learning rate scheduler.")
         scheduler = get_linear_schedule_with_warmup(
             optimizer, num_warmup_steps=warmup_steps, num_training_steps=number_of_steps
         )
         logger.success("Learning rate scheduler initialised.")
 
         # Prepare everything with accelerator
-        logger.info("Accelerator preparing training components...")
+        logger.debug("Accelerator preparing training components...")
         self.model, optimizer, scheduler, self.train_dataloader = (
             self.accelerator.prepare(
                 self.model, optimizer, scheduler, self.train_dataloader
@@ -157,13 +157,17 @@ class BinaryAlignTrainer(PipelineStep):
         if self.eval_data is not None:
             self.eval_dataloader = DataLoader(
                 self.eval_data.data,  # type:ignore
-                **self.dataloader_config,  # type:ignore
+                # **self.dataloader_config,  # type:ignore
+                batch_size=1,
+                num_workers=0,
+                shuffle=True,
+                pin_memory=False,
             )
             self.eval_dataloader = self.accelerator.prepare(self.eval_dataloader)
         logger.success("Accelerator prepared training components.")
 
         # Training loop
-        logger.info("Starting training loop...")
+        logger.debug("Starting training loop...")
         self.accelerator.wait_for_everyone()
         self.accelerator.print("=" * 50)
         self.accelerator.print(" Num examples = ", len(self.train_data))
@@ -226,7 +230,7 @@ class BinaryAlignTrainer(PipelineStep):
                     self.accelerator.wait_for_everyone()
                     eval_loss = self.evaluate()
                     if eval_loss is not None:
-                        logger.info(
+                        logger.debug(
                             f"Epoch {epoch + 1} evaluation loss: {eval_loss:.4f}"
                         )
                         if self.accelerator.is_main_process:
@@ -235,6 +239,7 @@ class BinaryAlignTrainer(PipelineStep):
                             )
                 except Exception as e:
                     logger.error(f"Evaluation failed: {e}")
+                    break  # TODO: remove after evaluation is working again
 
         pbar.close()
         logger.success("Training completed successfully.")

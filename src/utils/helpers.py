@@ -63,29 +63,49 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> None:
         torch.backends.cudnn.benchmark = False
 
 
-def collate_fn_span(
-    examples: list[dict[str, torch.Tensor]], tokenizer: PreTrainedTokenizer
-) -> dict[str, torch.Tensor]:
-    def _produce_batch(examples):
-        input_ids = [torch.tensor(x["input_ids"]) for x in examples]
-        attention_mask = [torch.tensor(x["attention_mask"]) for x in examples]
-        labels = [torch.tensor(x["labels"]) for x in examples]
+@logger.catch(message="Unable to execute dataloader collate function", reraise=True)
+def collate_fn_span(examples, tokenizer):
+    def ensure_tensor(x):
+        return x if isinstance(x, torch.Tensor) else torch.tensor(x, dtype=torch.long)
 
-        input_ids = pad_sequence(
-            input_ids,
-            batch_first=True,
-            padding_value=tokenizer.pad_token_id,  # type: ignore
-        )
-        attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
-        labels = pad_sequence(labels, batch_first=True, padding_value=-100)
+    # Flatten if necessary (for bidirectional samples)
+    flat = []
+    for ex in examples:
+        if isinstance(ex, list):
+            flat.extend(ex)
+        else:
+            flat.append(ex)
 
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-        }
+    # Convert to tensor before any use
+    for i, x in enumerate(flat):
+        x["input_ids"] = ensure_tensor(x["input_ids"])
+        x["attention_mask"] = ensure_tensor(x["attention_mask"])
+        x["labels"] = ensure_tensor(x["labels"])
 
-    return _produce_batch(examples)
+        # print(f"[DEBUG] input_ids[{i}] shape: {x['input_ids'].shape}")
+
+    # Now that all are tensors, we can safely pad
+    input_ids = pad_sequence(
+        [x["input_ids"] for x in flat],
+        batch_first=True,
+        padding_value=tokenizer.pad_token_id,
+    )
+    attention_mask = pad_sequence(
+        [x["attention_mask"] for x in flat],
+        batch_first=True,
+        padding_value=0,
+    )
+    labels = pad_sequence(
+        [x["labels"] for x in flat],
+        batch_first=True,
+        padding_value=-100,
+    )
+
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "labels": labels,
+    }
 
 
 @logger.catch(message="Unable to parse an alignment.", reraise=True)

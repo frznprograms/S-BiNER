@@ -52,6 +52,7 @@ class BinaryAlignEvaluator(PipelineStep):
             tk2word_prob=tk2word_prob,
         )
 
+    @logger.catch(message="Unable to get bidirectional metrics", reraise=True)
     def _bidirectional_eval_span(
         self,
         dataloader: DataLoader,
@@ -111,6 +112,9 @@ class BinaryAlignEvaluator(PipelineStep):
         model.train()
         return metrics
 
+    @logger.catch(
+        message="Unable to get probabilities for a sample in the data", reraise=True
+    )
     def _get_sample_probs(
         self,
         sample,
@@ -125,14 +129,32 @@ class BinaryAlignEvaluator(PipelineStep):
         sample_preds = defaultdict(list)
         all_input_ids = sample["input_ids"].split(mini_batch_size)
         all_attention_mask = sample["attention_mask"].split(mini_batch_size)
-        bpe2word_map = sample["bpe2word_map"].split(mini_batch_size)
+
+        # Handle missing bpe2word_map gracefully
+        if "bpe2word_map" not in sample:
+            logger.warning("bpe2word_map not found in sample, creating dummy mapping")
+            # Create a simple dummy mapping based on sequence length
+            seq_len = sample["input_ids"].shape[1]
+            bpe2word_map = (
+                torch.arange(seq_len)
+                .unsqueeze(0)
+                .repeat(sample["input_ids"].shape[0], 1)
+            )
+        else:
+            bpe2word_map = sample["bpe2word_map"]
+
+        bpe2word_map = bpe2word_map.split(mini_batch_size)
         count = 0
 
-        for input_ids, attention_mask in zip(all_input_ids, all_attention_mask):
+        for input_ids, attention_mask, bpe2word_batch in zip(
+            all_input_ids, all_attention_mask, bpe2word_map
+        ):
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)
 
-            logits = model.model(input_ids, attention_mask=attention_mask).logits
+            with torch.no_grad():  # Add no_grad for evaluation
+                logits = model(input_ids, attention_mask=attention_mask).logits
+
             if logits.shape[2] == 2:
                 probs = softmax(logits)[:, :, 1]
             else:
@@ -140,16 +162,27 @@ class BinaryAlignEvaluator(PipelineStep):
 
             for batch_idx in range(probs.size(0)):
                 sentence_probs = probs[batch_idx]
-                bpe2word = bpe2word_map[batch_idx].tolist()
-                for word_number, word_prob in enumerate(sentence_probs):
+                bpe2word = bpe2word_batch[batch_idx].tolist()
+
+                # Handle potential length mismatches
+                min_len = min(len(sentence_probs), len(bpe2word))
+                for word_number in range(min_len):
+                    word_prob = sentence_probs[word_number]
                     tgt = bpe2word[word_number]
                     if tgt != -1:
                         key = (tgt, count) if reverse else (count, tgt)
                         sample_preds[key].append(word_prob.item())
                 count += 1
 
-        return {k: AGG_FN[tk2word_prob](v) for k, v in sample_preds.items()}
+        return {
+            k: AGG_FN[tk2word_prob](torch.tensor(v))
+            for k, v in sample_preds.items()
+            if v
+        }
 
+    @logger.catch(
+        message="Unable to combine prediction probabilities for a sample", reraise=True
+    )
     def _combine_pred_probs(
         self,
         preds_1: dict[tuple[int, int], float],
@@ -172,6 +205,7 @@ class BinaryAlignEvaluator(PipelineStep):
             logger.error(f"{method} not supported!")
             return {}
 
+    @logger.catch(message="Unable to calculate metrics", reraise=True)
     def calculate_metrics(
         self,
         gold_sure: list[set[tuple[int, int]]],
@@ -179,7 +213,9 @@ class BinaryAlignEvaluator(PipelineStep):
         gold_possible: Optional[list[set[tuple[int, int]]]] = None,
         pred_possible: Optional[list[set[tuple[int, int]]]] = None,
     ) -> tuple[float, float, float, float]:
-        assert len(gold_sure) == len(pred_sure)
+        assert len(gold_sure) == len(pred_sure), (
+            f"Length mismatch: {len(gold_sure)} vs {len(pred_sure)}"
+        )
         if gold_possible is not None:
             assert len(gold_possible) == len(gold_sure)
         if pred_possible is not None:
@@ -206,7 +242,7 @@ class BinaryAlignEvaluator(PipelineStep):
             aer = 1.0
         else:
             precision = sum_a_intersect_p / sum_a
-            recall = sum_a_intersect_s / sum_s
+            recall = sum_a_intersect_s / sum_s if sum_s > 0 else 0.0
             aer = 1.0 - ((sum_a_intersect_s + sum_a_intersect_p) / (sum_s + sum_a))
 
         f1_score = (

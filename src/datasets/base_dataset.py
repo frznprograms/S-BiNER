@@ -42,11 +42,12 @@ class BaseDataset(ABC):
         self.alignments = self.read_data(path=self.alignments_path, limit=self.limit)
         self.sure, self.possible = [], []
 
-        logger.info("Preparing dataset...")
+        logger.debug("Preparing dataset...")
         self.run()
 
         # Create bidirectional data if not doing inference
         if not self.do_inference:
+            logger.debug("Combining forward and reverse data now...")
             self.data = self.data + self.reverse_data
 
         if self.save:
@@ -64,11 +65,7 @@ class BaseDataset(ABC):
 
     @property
     def alignment_sure(self) -> list[set[tuple[int, int]]]:
-        # Convert string like "0-0 1-2" into {(0, 0), (1, 2)} for each line in your .talp file
-        return [
-            {tuple(map(int, pair.split("-"))) for pair in line.strip().split()}
-            for line in self.sure
-        ]  # type: ignore
+        return self.sure
 
     def run(self):
         self.prepare_data(
@@ -87,6 +84,7 @@ class BaseDataset(ABC):
         )
 
     @timed_execution
+    @logger.catch(message="Failed to prepare dataset", reraise=True)
     def prepare_data(
         self,
         source_lines: list[str],
@@ -101,7 +99,7 @@ class BaseDataset(ABC):
             zip(source_lines, target_lines, alignments)
         ):
             progress_bar.update(1)
-
+            # symmetrisation
             if reverse:
                 source_line, target_line = target_line, source_line
 
@@ -111,12 +109,10 @@ class BaseDataset(ABC):
                     source_line=source_line, target_line=target_line
                 )
             )
-
             # Prepare input IDs
             input_id_dict = self._prepare_input_ids(
                 wbw_examples=word_by_word_examples, target_sentence=target_sentence
             )
-
             # Create combined input IDs
             input_ids = torch.cat(
                 (input_id_dict["source_input_ids"], input_id_dict["target_input_ids"]),
@@ -158,6 +154,9 @@ class BaseDataset(ABC):
             if i % 20 == 0:
                 gc.collect()
 
+    @logger.catch(
+        message="Error in generating target byte-pair encodings", reraise=True
+    )
     def _create_target_bpe2word_mapping(
         self, input_id_dict: dict[str, Any]
     ) -> torch.Tensor:
@@ -259,6 +258,7 @@ class BaseDataset(ABC):
             data.to_csv(save_path)
         elif format == "pt":
             torch.save(data, save_path)
+        logger.success("Data saved successfully.")
 
     @abstractmethod
     def _prepare_labels(
