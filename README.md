@@ -1,11 +1,10 @@
-Hi there, welcome to the 
-## BinaryAlign for Chinese
-repository.
+Hi there, welcome to
+## S-BiNER ##
 
 ### Description
 This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on Chinese.
 
-**Disclaimer**: This model is experimental and not designed for production-grade tasks yet.
+**Disclaimer**: This model is experimental and not designed for production-grade tasks.
 
 This methodology comes with the added twist of simple annotation projection for Named Entity Recognition (NER) tasks. 
 
@@ -25,7 +24,7 @@ uv sync
 ``` 
 This will intialise a `.venv` folder and install the required dependencies for this project.
 
-If you do not wish to use the `uv` package (though I would highly recommend it as it's really easy to use and wicked fast), you may also simply run 
+If you do not wish to use the `uv` package (though I would highly recommend it), you may also simply run 
 ```bash
 pip install -r requirements.txt
 ```
@@ -35,7 +34,7 @@ accelerate config
 ```
 and follow the prompts in the command line.
 
-To run inference using **ZetaAlign**, run the following terminal command: 
+To run inference using **S-BiNER**, run the following terminal command: 
 ```
 
 ```
@@ -45,8 +44,13 @@ To run inference using **ZetaAlign**, run the following terminal command:
 ### Input and Output formats
 
 
+### License
+
+
 ### Citations
-I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo.
+I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo. 
+
+I would also like to thank the good folks at Natural Semantics (Qingdao) Technology Co., Ltd. the main project owner of Hanlp, and Shanghai Linyuan Company for allowing the use of their tokenizer and models for research and teaching purposes. 
 
 @article{latouche2024binaryalign,
   title={BinaryAlign: Word Alignment as Binary Sequence Labeling},

@@ -4,7 +4,7 @@ from typing import Callable, Optional
 
 import torch
 
-from src.utils.helpers import collate_fn_span
+# from src.utils.helpers import collate_fn_span
 
 
 @dataclass
@@ -22,7 +22,7 @@ class DatasetConfig(ABC):
 
 @dataclass
 class DataLoaderConfig:
-    collate_fn: Optional[Callable] = collate_fn_span
+    collate_fn: Optional[Callable] = None  # collate_fn_span
     batch_size: int = 16
     num_workers: int = 0
     shuffle: bool = True
