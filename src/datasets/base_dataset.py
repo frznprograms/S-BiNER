@@ -130,8 +130,8 @@ class BaseDataset(ABC):
             target_bpe2word = self._create_target_bpe2word_mapping(input_id_dict)
 
             # Adjust target_bpe2word to match actual target length, just in case
-            source_len = input_id_dict["source_input_ids"].shape[1]
-            actual_input_id_length = input_ids.shape[1] - source_len
+            # source_len = input_id_dict["source_input_ids"].shape[1]
+            # actual_input_id_length = input_ids.shape[1] - source_len
             # target_bpe2word = target_bpe2word[:actual_input_id_length]
 
             if self.debug_mode:
@@ -156,7 +156,6 @@ class BaseDataset(ABC):
                 input_ids=input_ids,
                 input_id_dict=input_id_dict,
                 alignment=alignment,
-                actual_target_len=actual_input_id_length,
                 reverse=reverse,
             )
 
@@ -291,7 +290,6 @@ class BaseDataset(ABC):
         input_ids: torch.Tensor,
         input_id_dict: dict[str, Any],
         alignment: str,
-        actual_target_len: int,
         reverse: bool = False,
     ):
         pass

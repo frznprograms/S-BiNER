@@ -28,7 +28,6 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
         input_ids: torch.Tensor,
         input_id_dict: dict[str, Any],
         alignment: str,
-        actual_target_len: int,
         reverse: bool = False,
     ):
         # Create empty labels
