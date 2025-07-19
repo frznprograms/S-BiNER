@@ -1,4 +1,4 @@
-import gc
+import os
 import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -13,6 +13,8 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from src.utils.decorators import timed_execution
 from src.utils.helpers import delist_the_list
 
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
+
 
 @dataclass
 class BaseDataset(ABC):
@@ -26,12 +28,17 @@ class BaseDataset(ABC):
     do_inference: bool = False
     log_output_dir: str = "logs"
     save: bool = False
-    debug_mode: bool = True
+    debug_mode: bool = False
     sure: list = field(default_factory=list, init=False)
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
 
     def __post_init__(self):
+        if self.debug_mode and self.limit and self.limit > 1:
+            self.limit = 1
+            logger.info(
+                "Since debug mode is set to true, only first data entry will be read."
+            )
         self.source_lines = self.read_data(
             path=self.source_lines_path, limit=self.limit
         )
@@ -73,13 +80,13 @@ class BaseDataset(ABC):
             data=self.data,
         )
 
-        self.prepare_data(
-            source_lines=self.source_lines,
-            target_lines=self.target_lines,
-            alignments=self.alignments,
-            data=self.reverse_data,
-            reverse=True,
-        )
+        # self.prepare_data(
+        #     source_lines=self.source_lines,
+        #     target_lines=self.target_lines,
+        #     alignments=self.alignments,
+        #     data=self.reverse_data,
+        #     reverse=True,
+        # ) # TODO: add this back after debugging is done
 
     @timed_execution
     @logger.catch(message="Failed to prepare dataset", reraise=True)
@@ -123,23 +130,22 @@ class BaseDataset(ABC):
 
             # Adjust target_bpe2word to match actual target length, just in case
             source_len = input_id_dict["source_input_ids"].shape[1]
-            actual_target_len = input_ids.shape[1] - source_len
-            target_bpe2word = target_bpe2word[:actual_target_len]
+            actual_input_id_length = input_ids.shape[1] - source_len
+            # target_bpe2word = target_bpe2word[:actual_input_id_length]
 
             if self.debug_mode:
-                # BaseDataset.view_wbw_examples(examples=word_by_word_examples)
-                # BaseDataset.view_input_id_dict(
-                #     source_sentence=source_sentence,
-                #     target_sentence=target_sentence,
-                #     input_id_dict=input_id_dict,
-                # )
-                # BaseDataset.view_bpe2word_mappings(
-                #     input_id_dict=input_id_dict,
-                #     source_bpe2word=source_bpe2word,
-                #     target_bpe2word=target_bpe2word,
-                # )
-                # return
-                pass
+                BaseDataset.view_wbw_examples(examples=word_by_word_examples)
+                BaseDataset.view_input_id_dict(
+                    source_sentence=source_sentence,
+                    target_sentence=target_sentence,
+                    input_id_dict=input_id_dict,
+                )
+                BaseDataset.view_bpe2word_mappings(
+                    input_id_dict=input_id_dict,
+                    source_bpe2word=source_bpe2word,
+                    target_bpe2word=target_bpe2word,
+                )
+            # return
 
             # Prepare labels (abstract method - implemented by child classes)
             self._prepare_labels(
@@ -149,14 +155,9 @@ class BaseDataset(ABC):
                 input_ids=input_ids,
                 input_id_dict=input_id_dict,
                 alignment=alignment,
-                actual_target_len=actual_target_len,
+                actual_target_len=actual_input_id_length,
                 reverse=reverse,
             )
-
-            # Cleanup
-            del input_ids, target_bpe2word
-            if i % 20 == 0:
-                gc.collect()
 
     @logger.catch(
         message="Error in generating target byte-pair encodings", reraise=True
@@ -249,6 +250,7 @@ class BaseDataset(ABC):
             "target_input_ids": target_input_ids,
         }
 
+    @logger.catch(message="Unable to read data", reraise=True)
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
         data = delist_the_list(pd.read_csv(path, sep="\t").values.tolist())
         if limit is None:
@@ -257,6 +259,7 @@ class BaseDataset(ABC):
 
         return data
 
+    @logger.catch(message="Unable to save data", reraise=True)
     def save_data(self, data: Any, save_path: str, format: str = "pt") -> None:
         if format == "csv":
             data.to_csv(save_path)
@@ -289,7 +292,6 @@ class BaseDataset(ABC):
         print("=" * 50)
         print(f"Source sentence: {source_sentence}")
         print(f"Source tokens: {input_id_dict['source_tokens']}")
-        print(f"Source input ids shape: {input_id_dict['source_input_ids'].shape}")
         print("=" * 50)
         print("Source input ids:")
         print("[")
@@ -349,6 +351,7 @@ class BaseDataset(ABC):
             print(f"\t{elem}")
         print("]")
         print("=" * 50)
+        print(f"Source byte-pair encodings shape: {source_bpe2word.shape}")
         print("Source byte-pair encodings:")
         print(source_bpe2word)
         print("=" * 50)
@@ -360,6 +363,33 @@ class BaseDataset(ABC):
             print(f"\t{elem}")
         print("]")
         print("=" * 50)
+        print(f"Target byte-pair encodings shape: {target_bpe2word.shape}")
         print("Target byte-pair encodings:")
         print(target_bpe2word)
+        print("=" * 50)
+
+    @staticmethod
+    def view_sure_alignments(sure_alignments: set[tuple[int, int]]):
+        logger.info("Showing identified sure alignments:")
+        most_recent_matches = sure_alignments
+        print(f"Number of sure matches: {len(most_recent_matches)}")
+        print("Most recent matches:")
+        for match in most_recent_matches:
+            print(f"\t{match}")
+
+    @staticmethod
+    def view_labels(source_labels: torch.Tensor, target_labels: torch.Tensor) -> None:
+        logger.info("Showing generated labels:")
+        print("=" * 50)
+        print(f"Source labels shape: {source_labels.shape}")
+        print("Source labels:")
+        print(f"\t{source_labels}")
+        print("=" * 50)
+        print(f"Target labels shape: {target_labels.shape}")
+        print("Target labels:")
+        print(f"\t{target_labels}")
+        print("=" * 50)
+        labels = torch.cat((source_labels, target_labels), dim=1)
+        print("Combined labels:")
+        print(f"\t{labels}")
         print("=" * 50)

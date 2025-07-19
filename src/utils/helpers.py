@@ -104,15 +104,16 @@ def collate_fn_span(
     )
 
     return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-        }
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "labels": labels,
+    }
 
 
 @logger.catch(message="Unable to parse an alignment.", reraise=True)
 def parse_single_alignment(string, one_indexed=False, reverse: bool = False):
-    assert ("-" in string or "p" in string) and "Bad Alignment separator"
+    assert "-" in string
+    # just in case there are possible alignments denoted by p
     a, b = string.replace("p", "-").split("-")
     a, b = int(a), int(b)
 
