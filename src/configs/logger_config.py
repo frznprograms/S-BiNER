@@ -77,7 +77,7 @@ class LoggedProcess:
                 "WARNING": "<yellow>",
                 "SUCCESS": "<green>",
                 "INFO": "<white>",
-                "DEBUG": "<blue>",
+                "DEBUG": "<cyan>",
             }
             level_color = colors.get(level, "<white>")
             return (

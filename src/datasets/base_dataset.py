@@ -117,31 +117,29 @@ class BaseDataset(ABC):
                 dim=1,
             )
 
-            if self.debug_mode:
-                BaseDataset.view_input_id_dict(
-                    source_sentence=source_sentence,
-                    target_sentence=target_sentence,
-                    input_id_dict=input_id_dict,
-                )
-                return
-
             # Prepare BPE to word mappings
-            if self.do_inference:
-                # For inference, we need 1D tensors
-                # Create a single source_bpe2word mapping for the entire sequence
-                source_len = input_id_dict["source_input_ids"].shape[1]
-                source_bpe2word = torch.ones(source_len) * -1
-            else:
-                # For training, keep the 2D structure
-                source_bpe2word = (
-                    torch.ones_like(input_id_dict["source_input_ids"]) * -1
-                )
+            source_bpe2word = torch.ones_like(input_id_dict["source_input_ids"][0]) * -1
             target_bpe2word = self._create_target_bpe2word_mapping(input_id_dict)
 
-            # Adjust target_bpe2word to match actual target length
+            # Adjust target_bpe2word to match actual target length, just in case
             source_len = input_id_dict["source_input_ids"].shape[1]
             actual_target_len = input_ids.shape[1] - source_len
             target_bpe2word = target_bpe2word[:actual_target_len]
+
+            if self.debug_mode:
+                # BaseDataset.view_wbw_examples(examples=word_by_word_examples)
+                # BaseDataset.view_input_id_dict(
+                #     source_sentence=source_sentence,
+                #     target_sentence=target_sentence,
+                #     input_id_dict=input_id_dict,
+                # )
+                # BaseDataset.view_bpe2word_mappings(
+                #     input_id_dict=input_id_dict,
+                #     source_bpe2word=source_bpe2word,
+                #     target_bpe2word=target_bpe2word,
+                # )
+                # return
+                pass
 
             # Prepare labels (abstract method - implemented by child classes)
             self._prepare_labels(
@@ -167,8 +165,8 @@ class BaseDataset(ABC):
         self, input_id_dict: dict[str, Any]
     ) -> torch.Tensor:
         target_bpe2word = []
-        for k, word_list in enumerate(input_id_dict["target_tokens"]):
-            target_bpe2word += [k for _ in word_list]
+        for k, tokens_for_word in enumerate(input_id_dict["target_tokens"]):
+            target_bpe2word += [k for _ in tokens_for_word]
 
         return torch.Tensor(
             target_bpe2word + [-1]
@@ -280,13 +278,14 @@ class BaseDataset(ABC):
     ):
         pass
 
-    # helper function for debugging
+    # helper static functions for debugging
     @staticmethod
     def view_input_id_dict(
         source_sentence: list[str],
         target_sentence: list[str],
         input_id_dict: dict[str, Any],
     ) -> None:
+        logger.debug("Showing input_id_dict")
         print("=" * 50)
         print(f"Source sentence: {source_sentence}")
         print(f"Source tokens: {input_id_dict['source_tokens']}")
@@ -321,4 +320,46 @@ class BaseDataset(ABC):
         for elem in input_id_dict["target_w2id"]:
             print(f"\t{elem}")
         print("]")
+        print("=" * 50)
+
+    @staticmethod
+    def view_wbw_examples(examples: list[list[str]]) -> None:
+        logger.debug("Showing word_by_word_examples")
+        print("=" * 50)
+        print("Word by word examples:")
+        for example in examples:
+            print(f"\t{example}")
+        print("=" * 50)
+
+    @staticmethod
+    def view_bpe2word_mappings(
+        input_id_dict: dict[str, Any],
+        source_bpe2word: torch.Tensor,
+        target_bpe2word: torch.Tensor,
+    ) -> None:
+        logger.debug("Showing bpe2word mappings")
+        source_input_ids = input_id_dict["source_input_ids"]
+        target_input_ids = input_id_dict["target_input_ids"]
+        print("=" * 50)
+        print(f"Source input ids shape: {source_input_ids.shape}")
+        print("=" * 50)
+        print("Source input ids:")
+        print("[")
+        for elem in source_input_ids:
+            print(f"\t{elem}")
+        print("]")
+        print("=" * 50)
+        print("Source byte-pair encodings:")
+        print(source_bpe2word)
+        print("=" * 50)
+        print(f"Target input ids shape: {target_input_ids.shape}")
+        print("=" * 50)
+        print("Target input ids:")
+        print("[")
+        for elem in target_input_ids:
+            print(f"\t{elem}")
+        print("]")
+        print("=" * 50)
+        print("Target byte-pair encodings:")
+        print(target_bpe2word)
         print("=" * 50)
