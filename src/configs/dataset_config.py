@@ -18,7 +18,7 @@ class DatasetConfig(ABC):
     do_inference: bool = False
     log_output_dir: str = "logs"
     save: bool = False
-    debug_mode: bool = True  # TODO: change back to false when done debugging
+    debug_mode: bool = False
 
 
 @dataclass
