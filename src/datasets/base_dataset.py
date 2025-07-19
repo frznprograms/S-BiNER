@@ -26,6 +26,7 @@ class BaseDataset(ABC):
     do_inference: bool = False
     log_output_dir: str = "logs"
     save: bool = False
+    debug_mode: bool = True
     sure: list = field(default_factory=list, init=False)
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
@@ -115,6 +116,14 @@ class BaseDataset(ABC):
                 (input_id_dict["source_input_ids"], input_id_dict["target_input_ids"]),
                 dim=1,
             )
+
+            if self.debug_mode:
+                BaseDataset.view_input_id_dict(
+                    source_sentence=source_sentence,
+                    target_sentence=target_sentence,
+                    input_id_dict=input_id_dict,
+                )
+                return
 
             # Prepare BPE to word mappings
             if self.do_inference:
@@ -270,3 +279,46 @@ class BaseDataset(ABC):
         reverse: bool = False,
     ):
         pass
+
+    # helper function for debugging
+    @staticmethod
+    def view_input_id_dict(
+        source_sentence: list[str],
+        target_sentence: list[str],
+        input_id_dict: dict[str, Any],
+    ) -> None:
+        print("=" * 50)
+        print(f"Source sentence: {source_sentence}")
+        print(f"Source tokens: {input_id_dict['source_tokens']}")
+        print(f"Source input ids shape: {input_id_dict['source_input_ids'].shape}")
+        print("=" * 50)
+        print("Source input ids:")
+        print("[")
+        for elem in input_id_dict["source_input_ids"]:
+            print(f"\t{elem}")
+        print("]")
+        print("=" * 50)
+        print("Source w2ids:")
+        print("[")
+        for elem in input_id_dict["source_w2id"]:
+            print(f"\t{elem}")
+        print("]")
+
+        print("=" * 50)
+
+        print(f"Target sentence: {target_sentence}")
+        print(f"Target tokens: {input_id_dict['target_tokens']}")
+        print(f"Target input ids shape: {input_id_dict['target_input_ids'].shape}")
+        print("=" * 50)
+        print("Target input ids:")
+        print("[")
+        for elem in input_id_dict["target_input_ids"]:
+            print(f"\t{elem}")
+        print("]")
+        print("=" * 50)
+        print("Target w2ids:")
+        print("[")
+        for elem in input_id_dict["target_w2id"]:
+            print(f"\t{elem}")
+        print("]")
+        print("=" * 50)
