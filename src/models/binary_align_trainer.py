@@ -32,7 +32,7 @@ class BinaryAlignTrainer(PipelineStep):
     dataloader_config: DataLoaderConfig
     train_data: Union[AlignmentDatasetGold, AlignmentDatasetSilver]
     eval_data: Optional[Union[AlignmentDatasetGold, AlignmentDatasetSilver]] = None
-    device_type: str = "auto"
+    device_type: str = "cpu"  # "auto"
     seed_num: int = 42
     priority_metric_for_optimisation: Optional[str] = "aer"
 
@@ -219,30 +219,35 @@ class BinaryAlignTrainer(PipelineStep):
                                 "step": global_step,
                             }
                         )
-                    self.accelerator.print(f"Batch Training loss: {tr_loss}")
+                    # Use pbar.write instead of print to avoid interrupting progress bar
+                    pbar.write(f"Batch Training loss: {tr_loss}")
 
                 pbar.update(1)
 
-            # Epoch-level evaluation
+            # Epoch-level evaluation - pause progress bar for cleaner output
             if self.eval_data is not None and hasattr(self, "eval_dataloader"):
                 try:
                     self.accelerator.wait_for_everyone()
+                    pbar.write("Evaluating...")  # Clean message before evaluation
                     metrics = self.evaluate()
                     if metrics is not None:
-                        logger.info(
-                            f"Epoch {epoch + 1} | Precision: {metrics[0]:.4f}, Recall: {metrics[0]:.4f}, AER: {metrics[0]:.4f}, F1: {metrics[0]:.4f}"
-                        )
+                        # Fixed: Use correct indices for each metric
+                        precision, recall, aer, f1 = metrics
+                        eval_msg = f"Epoch {epoch + 1} | Precision: {precision:.4f}, Recall: {recall:.4f}, AER: {aer:.4f}, F1: {f1:.4f}"
+                        pbar.write(eval_msg)  # Use pbar.write instead of logger.info
+
                         if self.accelerator.is_main_process:
                             self.accelerator.log(
                                 {
                                     "epoch": epoch,
-                                    "precision": metrics[0],
-                                    "recall": metrics[1],
-                                    "aer": metrics[2],
-                                    "f1": metrics[3],
+                                    "precision": precision,
+                                    "recall": recall,
+                                    "aer": aer,
+                                    "f1": f1,
                                 }
                             )
                 except Exception as e:
+                    pbar.write(f"Evaluation failed: {e}")
                     logger.error(f"Evaluation failed: {e}")
                     break
 
@@ -292,13 +297,13 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=25,
+        limit=300,
     )
     eval_dataset_config = DatasetConfig(
         source_lines_path="data/cleaned_data/dev.src",
         target_lines_path="data/cleaned_data/dev.tgt",
         alignments_path="data/cleaned_data/dev.talp",
-        limit=5,
+        limit=30,
         do_inference=True,
     )
     dataloader_config = DataLoaderConfig(collate_fn=collate_fn_span)

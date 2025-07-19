@@ -196,11 +196,29 @@ class BinaryAlignEvaluator(PipelineStep):
 
         precision = sum_a_intersect_s / sum_a if sum_a != 0 else 0.0
         recall = sum_a_intersect_s / sum_s if sum_s != 0 else 0.0
+
+        # FIXED: Correct AER calculation
+        # AER = (|A| + |S| - 2 * |A ∩ S|) / (|A| + |S|)
         aer_denom = sum_a + sum_s
-        aer = 1.0 - (sum_a_intersect_s / aer_denom) if aer_denom > 0 else 1.0
+        if aer_denom > 0:
+            aer = (sum_a + sum_s - 2 * sum_a_intersect_s) / aer_denom
+        else:
+            aer = 1.0  # No predictions and no gold alignments = perfect error rate
+
         f1 = (
             (2 * precision * recall / (precision + recall))
             if (precision + recall) > 0
             else 0.0
         )
+
+        # Add debug information
+        logger.debug("  Metrics calculation:")
+        logger.debug(f"  Total predicted alignments: {sum_a}")
+        logger.debug(f"  Total gold alignments: {sum_s}")
+        logger.debug(f"  Correct predictions: {sum_a_intersect_s}")
+        logger.debug(f"  Precision: {precision:.4f}")
+        logger.debug(f"  Recall: {recall:.4f}")
+        logger.debug(f"  AER: {aer:.4f}")
+        logger.debug(f"  F1: {f1:.4f}")
+
         return precision, recall, aer, f1
