@@ -1,5 +1,8 @@
-import os
+import gc
 import itertools
+import os
+
+# import tracemalloc
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -100,6 +103,7 @@ class BaseDataset(ABC):
         reverse: bool = False,
     ):
         progress_bar = tqdm(total=len(source_lines))
+        # tracemalloc.start()
 
         for i, (source_line, target_line, alignment) in enumerate(
             zip(source_lines, target_lines, alignments)
@@ -158,6 +162,23 @@ class BaseDataset(ABC):
                 alignment=alignment,
                 reverse=reverse,
             )
+            del (
+                source_line,
+                target_line,
+                alignment,
+                source_bpe2word,
+                target_bpe2word,
+                input_id_dict,
+                input_ids,
+                source_sentence,
+                target_sentence,
+            )
+            gc.collect()
+
+        # current, peak = tracemalloc.get_traced_memory()
+        # print(
+        #     f"[Post-deletion] Current: {current / 1e6:.2f} MB; Peak: {peak / 1e6:.2f} MB"
+        # )
 
     @logger.catch(
         message="Error in generating target byte-pair encodings", reraise=True
