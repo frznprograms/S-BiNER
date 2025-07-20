@@ -103,13 +103,13 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=1000,
+        limit=1,
     )
     eval_dataset_config = DatasetConfig(
         source_lines_path="data/cleaned_data/dev.src",
         target_lines_path="data/cleaned_data/dev.tgt",
         alignments_path="data/cleaned_data/dev.talp",
-        limit=1000,
+        limit=1,
         do_inference=True,
     )
     dataloader_config = DataLoaderConfig(collate_fn=collate_fn_span)

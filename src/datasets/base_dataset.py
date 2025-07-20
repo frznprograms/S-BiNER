@@ -84,13 +84,13 @@ class BaseDataset(ABC):
             data=self.data,
         )
 
-        self.prepare_data(
-            source_lines=self.source_lines,
-            target_lines=self.target_lines,
-            alignments=self.alignments,
-            data=self.reverse_data,
-            reverse=True,
-        )
+        # self.prepare_data(
+        #     source_lines=self.source_lines,
+        #     target_lines=self.target_lines,
+        #     alignments=self.alignments,
+        #     data=self.reverse_data,
+        #     reverse=True,
+        # )
 
     @timed_execution
     @logger.catch(message="Failed to prepare dataset", reraise=True)
@@ -127,7 +127,7 @@ class BaseDataset(ABC):
             input_ids = torch.cat(
                 (input_id_dict["source_input_ids"], input_id_dict["target_input_ids"]),
                 dim=-1,
-            )[:, :512]
+            )[:, : self.max_sentence_length]
 
             # Prepare BPE to word mappings
             source_bpe2word = torch.ones_like(input_id_dict["source_input_ids"][0]) * -1
@@ -226,26 +226,15 @@ class BaseDataset(ABC):
     def _prepare_input_ids(
         self, wbw_examples: list[list[str]], target_sentence: list[str]
     ) -> dict[str, Any]:
+        special_tokens_dict = {"additional_special_tokens": [self.context_sep]}
+        self.tokenizer.add_special_tokens(special_tokens_dict)  # type: ignore
+
         source_tokens: list[list[list[str]]] = [
-            [
-                self.tokenizer(
-                    word,
-                    padding="max_length",
-                    truncation=True,
-                    max_length=self.max_sentence_length,
-                )
-                for word in sentence
-            ]
+            [self.tokenizer.tokenize(word) for word in sentence]
             for sentence in wbw_examples
         ]  # type: ignore
         target_tokens: list[list[str]] = [
-            self.tokenizer(
-                word,
-                padding="max_length",
-                truncation=True,
-                max_length=self.max_sentence_length,
-            )
-            for word in target_sentence
+            self.tokenizer.tokenize(word) for word in target_sentence
         ]  # type: ignore
 
         source_w2id: list[list[list[int]]] = [
@@ -262,7 +251,7 @@ class BaseDataset(ABC):
                 self.tokenizer.prepare_for_model(
                     list(itertools.chain(*word_ids)),
                     truncation=True,
-                    # max_length=512,
+                    max_length=self.max_sentence_length,
                 )["input_ids"]
                 for word_ids in source_w2id
             ]
@@ -272,7 +261,7 @@ class BaseDataset(ABC):
             list(itertools.chain(*target_w2id)),
             return_tensors="pt",
             truncation=True,
-            # max_length=512,
+            max_length=self.max_sentence_length,
         )["input_ids"][1:]  # type: ignore | remove first cls token
         target_input_ids = target_input_ids.repeat(len(source_input_ids), 1)
 
