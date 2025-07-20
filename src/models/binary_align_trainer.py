@@ -81,8 +81,9 @@ class BinaryAlignTrainer(PipelineStep):
                 f"Mismatch in training devices: \n"
                 f"Accelerator device: {training_device}\n"
                 f"User specified device: {self.user_defined_device}\n"
-                f"Accelerator device will be used."
+                f"User-specified device will be used."
             )
+            training_device = self.user_defined_device
 
         # Initialize tracking
         self.accelerator.init_trackers(project_name=self.train_config.experiment_name)
@@ -189,7 +190,7 @@ class BinaryAlignTrainer(PipelineStep):
 
         for epoch in range(self.train_config.num_train_epochs):
             for batch in self.train_dataloader:
-                batch = {k: v.to(self.accelerator.device) for k, v in batch.items()}
+                batch = {k: v.to(training_device) for k, v in batch.items()}
 
                 loss = self.model(**batch).loss
 
@@ -274,7 +275,7 @@ class BinaryAlignTrainer(PipelineStep):
             model=self.model,  # type: ignore
             threshold=threshold,
             sure=sure,
-            device=self.accelerator.device,
+            device=self.user_defined_device,
             mini_batch_size=self.model_config.batch_size // 2,
             bidirectional_combine_type=combine_type,
             tk2word_prob=tk2word_prob,

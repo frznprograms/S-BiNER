@@ -69,12 +69,13 @@ class BinaryAlignEvaluator(PipelineStep):
         model.eval()
 
         predicted_sure = []
-
-        # self.analyze_gold_alignments(sure)
-
         # note that each sample is actually a batch of batch_size
         for sample in tqdm(dataloader):
-            # self.debug_model_structure(sample=sample, model=model, device=device)
+            if self.debug_mode:
+                BinaryAlignEvaluator.view_model_structure(
+                    sample=sample, model=model, device=device
+                )
+                break
             if isinstance(sample, list):  # Bidirectional eval
                 sample_1, sample_2 = sample
                 sample_preds_1 = self._get_sample_probs(
@@ -103,22 +104,14 @@ class BinaryAlignEvaluator(PipelineStep):
                     sample, model, device, mini_batch_size, tk2word_prob
                 )
 
-            print(f"Debug: all_probs type: {type(all_probs)}")
-            print(f"Debug: all_probs length: {len(all_probs)}")
-            if len(all_probs) > 0:
-                sample_items = list(all_probs.items())[:5]  # type: ignore # First 5 items
-                print(f"Debug: sample all_probs items: {sample_items}")
-                prob_values = list(all_probs.values())  # type: ignore
-                print(
-                    f"Debug: prob range: min={min(prob_values):.4f}, max={max(prob_values):.4f}"
-                )
-            print(f"Debug: threshold: {threshold}")
-            print(
-                f"Debug: items above threshold: {[(k, v) for k, v in all_probs.items() if v >= threshold][:5]}"  # type: ignore
-            )
-
             sure_set = {k for k, v in all_probs.items() if v >= threshold}  # type: ignore
             predicted_sure.append(sure_set)
+
+            if self.debug_mode:
+                BinaryAlignEvaluator.view_gold_alignments(sure)
+                BinaryAlignEvaluator.view_all_probs(
+                    all_probs=all_probs, threshold=threshold
+                )
 
         metrics = self.calculate_metrics_sure_only(
             gold_sure_alignments=sure,
@@ -149,10 +142,11 @@ class BinaryAlignEvaluator(PipelineStep):
         all_attention_mask = sample["attention_mask"][0].split(mini_batch_size)
         bpe2word_map = sample["bpe2word_map"].tolist()
 
-        # BinaryAlignEvaluator.view_input_ids(
-        #     sample=sample, mini_batch_size=mini_batch_size
-        # )
-        # return
+        if self.debug_mode:
+            BinaryAlignEvaluator.view_input_ids(
+                sample=sample, mini_batch_size=mini_batch_size
+            )
+
         global_sentence_idx = 0  # Global counter across all mini-batches
 
         for input_ids, attention_mask, bpe2word_batch in zip(
@@ -190,7 +184,7 @@ class BinaryAlignEvaluator(PipelineStep):
 
         result = {k: AGG_FN[tk2word_prob](v) for k, v in sample_preds.items()}
         print(
-            f"Debug _get_sample_probs: returning {len(result)} items, sample: {list(result.items())[:3]}"
+            f"Debug _get_sample_probs: returning {len(result)} items, sample: {list(result.items())[-5:-1]}"
         )
         return result
 
@@ -309,7 +303,8 @@ class BinaryAlignEvaluator(PipelineStep):
         print(f"bpe2word mapping: {sample['bpe2word_map'][0].tolist()}")
         print("=" * 50)
 
-    def debug_model_structure(self, sample, model, device):
+    @staticmethod
+    def view_model_structure(sample, model, device):
         """Debug function to understand what the model is actually predicting"""
 
         print("=== MODEL STRUCTURE ANALYSIS ===")
@@ -353,8 +348,9 @@ class BinaryAlignEvaluator(PipelineStep):
                 )
         else:
             probs = torch.sigmoid(logits)
-            print("Sample probabilities (first 10 tokens):")
-            for i in range(min(10, logits.shape[1])):
+            print("Sample probabilities (last 10 tokens):")
+            start_idx = max(0, logits.shape[1] - 10)
+            for i in range(start_idx, logits.shape[1]):
                 print(f"  Token {i}: aligned_prob={probs[0, i, 0]:.6f}")
 
         # Check bpe2word mapping
@@ -364,8 +360,8 @@ class BinaryAlignEvaluator(PipelineStep):
 
         return logits, probs
 
-    # Also add this to understand your gold alignments better
-    def analyze_gold_alignments(self, sure_alignments):
+    @staticmethod
+    def view_gold_alignments(sure_alignments) -> None:
         """Analyze the structure of gold alignments"""
         print("=== GOLD ALIGNMENTS ANALYSIS ===")
 
@@ -382,6 +378,22 @@ class BinaryAlignEvaluator(PipelineStep):
             print(f"  Target word range: {min(targets)} to {max(targets)}")
             print(f"  Unique source words: {len(set(sources))}")
             print(f"  Unique target words: {len(set(targets))}")
+
+    @staticmethod
+    def view_all_probs(all_probs, threshold: float) -> None:
+        print(f"Debug: all_probs type: {type(all_probs)}")
+        print(f"Debug: all_probs length: {len(all_probs)}")
+        if len(all_probs) > 0:
+            sample_items = list(all_probs.items())[:5]  # type: ignore # First 5 items
+            print(f"Debug: sample all_probs items: {sample_items}")
+            prob_values = list(all_probs.values())  # type: ignore
+            print(
+                f"Debug: prob range: min={min(prob_values):.4f}, max={max(prob_values):.4f}"
+            )
+        print(f"Debug: threshold: {threshold}")
+        print(
+            f"Debug: items above threshold: {[(k, v) for k, v in all_probs.items() if v >= threshold][:5]}"  # type: ignore
+        )
 
 
 if __name__ == "__main__":
