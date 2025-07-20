@@ -68,6 +68,143 @@ class BinaryAlignTrainer(PipelineStep):
     def run(self):
         logger.debug("Starting training...")
 
+        optimizer, scheduler, number_of_steps, training_device = (
+            self._init_training_utils()
+        )
+
+        # Prepare everything with accelerator
+        logger.debug("Accelerator preparing training components...")
+        self.model, optimizer, scheduler, self.train_dataloader = (
+            self.accelerator.prepare(
+                self.model, optimizer, scheduler, self.train_dataloader
+            )
+        )
+
+        # Prepare Eval Dataloader if one is supplied
+        if self.eval_data is not None:
+            self.eval_dataloader = DataLoader(
+                self.eval_data.data,  # type:ignore
+                # **self.dataloader_config,  # type:ignore
+                batch_size=1,  # TODO: find out if this can increase?
+                num_workers=self.dataloader_config.num_workers,
+                shuffle=self.dataloader_config.shuffle,
+                pin_memory=self.dataloader_config.pin_memory,
+            )
+            self.eval_dataloader = self.accelerator.prepare(self.eval_dataloader)
+        logger.success("Accelerator prepared training components.")
+
+        # Training loop
+        self.accelerator.wait_for_everyone()
+        logger.debug("Starting Training...")
+        self.accelerator.print("=" * 50)
+        self.accelerator.print(" Num examples = ", len(self.train_data))
+        self.accelerator.print(" Num Epochs = ", self.train_config.num_train_epochs)
+        self.accelerator.print(
+            " Batch Size per device = ", self.model_config.batch_size
+        )
+        self.accelerator.print(" Total optimization steps = ", number_of_steps)
+        self.accelerator.print("=" * 50)
+
+        pbar = tqdm(
+            total=number_of_steps,
+            disable=not self.accelerator.is_local_main_process,
+        )
+        global_step, global_step_last_logged = 0, 0
+        total_loss_scalar = 0.0
+
+        for epoch in range(self.train_config.num_train_epochs):
+            for batch in self.train_dataloader:
+                batch = {k: v.to(training_device) for k, v in batch.items()}
+
+                loss = self.model(**batch).loss
+
+                self.accelerator.backward(loss)
+                optimizer.step()
+                optimizer.zero_grad()
+                if not self.accelerator.optimizer_step_was_skipped:
+                    scheduler.step()
+
+                global_step += 1
+                total_loss_scalar += round(loss.item(), 4)
+
+                # Logging
+                if global_step % self.train_config.logging_steps == 0:
+                    tr_loss = round(
+                        total_loss_scalar / (global_step - global_step_last_logged), 4
+                    )
+                    global_step_last_logged = global_step
+                    total_loss_scalar = 0.0
+                    if self.accelerator.is_main_process:
+                        # TODO: find out where these logs are saved
+                        self.accelerator.log(
+                            {
+                                "epoch": epoch,
+                                "train_loss": tr_loss,
+                                "learning_rate": scheduler.get_last_lr()[0],
+                                "step": global_step,
+                            }
+                        )
+                    # Use pbar.write instead of print to avoid interrupting progress bar
+                    pbar.write(f"Batch Training loss: {tr_loss}")
+
+                pbar.update(1)
+
+            # Evaluation
+            if self.eval_data is not None and hasattr(self, "eval_dataloader"):
+                try:
+                    self.accelerator.wait_for_everyone()
+                    pbar.write("Evaluating...")  # Clean message before evaluation
+                    metrics = self.evaluate()
+                    if metrics is not None:
+                        precision, recall, aer, f1 = metrics
+                        eval_msg = f"Step {global_step + 1} | Precision: {precision:.4f}, Recall: {recall:.4f}, AER: {aer:.4f}, F1: {f1:.4f}"
+                        pbar.write(eval_msg)
+
+                        if self.accelerator.is_main_process:
+                            self.accelerator.log(
+                                {
+                                    "step": global_step,
+                                    "precision": precision,
+                                    "recall": recall,
+                                    "aer": aer,
+                                    "f1": f1,
+                                }
+                            )
+                except Exception as e:
+                    pbar.write(f"Evaluation failed: {e}, continuing training...")
+
+        pbar.close()
+        logger.success("Training completed successfully.")
+
+        # End of training cleanup
+        self.accelerator.end_training()
+        self.accelerator.free_memory()
+
+    @logger.catch(message="Failed to perform evaluation.", reraise=True)
+    def evaluate(self):
+        if not self.evaluator:
+            self.evaluator = BinaryAlignEvaluator()
+
+        # Use default or configured values
+        threshold = getattr(self.model_config, "threshold", 0.7)
+        combine_type = getattr(self.model_config, "bidirectional_combine_type", "union")
+        tk2word_prob = getattr(self.model_config, "tk2word_prob", "max")
+
+        # Sure alignments only
+        sure = self.eval_data.alignment_sure  # type:ignore expected: list[set[tuple[int, int]]]
+
+        return self.evaluator.run(
+            dataloader=self.eval_dataloader,  # type: ignore
+            model=self.model,  # type: ignore
+            threshold=threshold,
+            sure=sure,
+            device=self.user_defined_device,
+            mini_batch_size=self.model_config.batch_size // 2,
+            bidirectional_combine_type=combine_type,
+            tk2word_prob=tk2word_prob,
+        )
+
+    def _init_training_utils(self):
         logger.debug("Initialising accelerator...")
         self.accelerator = Accelerator(
             mixed_precision=self.train_config.mixed_precision,
@@ -148,138 +285,7 @@ class BinaryAlignTrainer(PipelineStep):
         )
         logger.success("Learning rate scheduler initialised.")
 
-        # Prepare everything with accelerator
-        logger.debug("Accelerator preparing training components...")
-        self.model, optimizer, scheduler, self.train_dataloader = (
-            self.accelerator.prepare(
-                self.model, optimizer, scheduler, self.train_dataloader
-            )
-        )
-
-        # Prepare Eval Dataloader if one is supplied
-        if self.eval_data is not None:
-            self.eval_dataloader = DataLoader(
-                self.eval_data.data,  # type:ignore
-                # **self.dataloader_config,  # type:ignore
-                batch_size=1,  # TODO: find out if this can increase?
-                num_workers=self.dataloader_config.num_workers,
-                shuffle=self.dataloader_config.shuffle,
-                pin_memory=self.dataloader_config.pin_memory,
-            )
-            self.eval_dataloader = self.accelerator.prepare(self.eval_dataloader)
-        logger.success("Accelerator prepared training components.")
-
-        # Training loop
-        self.accelerator.wait_for_everyone()
-        logger.debug("Starting Training...")
-        self.accelerator.print("=" * 50)
-        self.accelerator.print(" Num examples = ", len(self.train_data))
-        self.accelerator.print(" Num Epochs = ", self.train_config.num_train_epochs)
-        self.accelerator.print(
-            " Batch Size per device = ", self.model_config.batch_size
-        )
-        self.accelerator.print(" Total optimization steps = ", number_of_steps)
-        self.accelerator.print("=" * 50)
-
-        pbar = tqdm(
-            total=number_of_steps,
-            disable=not self.accelerator.is_local_main_process,
-        )
-        global_step, global_step_last_logged = 0, 0
-        total_loss_scalar = 0.0
-
-        for epoch in range(self.train_config.num_train_epochs):
-            for batch in self.train_dataloader:
-                batch = {k: v.to(training_device) for k, v in batch.items()}
-
-                loss = self.model(**batch).loss
-
-                self.accelerator.backward(loss)
-                optimizer.step()
-                optimizer.zero_grad()
-                if not self.accelerator.optimizer_step_was_skipped:
-                    scheduler.step()
-
-                global_step += 1
-                total_loss_scalar += round(loss.item(), 4)
-
-                # Logging
-                if global_step % self.train_config.logging_steps == 0:
-                    tr_loss = round(
-                        total_loss_scalar / (global_step - global_step_last_logged), 4
-                    )
-                    global_step_last_logged = global_step
-                    total_loss_scalar = 0.0
-                    if self.accelerator.is_main_process:
-                        self.accelerator.log(
-                            {
-                                "epoch": epoch,
-                                "train_loss": tr_loss,
-                                "learning_rate": scheduler.get_last_lr()[0],
-                                "step": global_step,
-                            }
-                        )
-                    # Use pbar.write instead of print to avoid interrupting progress bar
-                    pbar.write(f"Batch Training loss: {tr_loss}")
-
-                pbar.update(1)
-
-            # Epoch-level evaluation - pause progress bar for cleaner output
-            if self.eval_data is not None and hasattr(self, "eval_dataloader"):
-                try:
-                    self.accelerator.wait_for_everyone()
-                    pbar.write("Evaluating...")  # Clean message before evaluation
-                    metrics = self.evaluate()
-                    if metrics is not None:
-                        precision, recall, aer, f1 = metrics
-                        eval_msg = f"Epoch {epoch + 1} | Precision: {precision:.4f}, Recall: {recall:.4f}, AER: {aer:.4f}, F1: {f1:.4f}"
-                        pbar.write(eval_msg)
-
-                        if self.accelerator.is_main_process:
-                            self.accelerator.log(
-                                {
-                                    "epoch": epoch,
-                                    "precision": precision,
-                                    "recall": recall,
-                                    "aer": aer,
-                                    "f1": f1,
-                                }
-                            )
-                except Exception as e:
-                    pbar.write(f"Evaluation failed: {e}")
-                    logger.error(f"Evaluation failed: {e}")
-            #         break
-
-        pbar.close()
-        logger.success("Training completed successfully.")
-
-        # End of training cleanup
-        self.accelerator.end_training()
-        self.accelerator.free_memory()
-
-    @logger.catch(message="Failed to perform evaluation.", reraise=True)
-    def evaluate(self):
-        if not self.evaluator:
-            self.evaluator = BinaryAlignEvaluator()
-
-        # Use default or configured values
-        threshold = getattr(self.model_config, "threshold", 0.7)
-        combine_type = getattr(self.model_config, "bidirectional_combine_type", "union")
-        tk2word_prob = getattr(self.model_config, "tk2word_prob", "max")
-
-        # Sure alignments only
-        sure = self.eval_data.alignment_sure  # type:ignore expected: list[set[tuple[int, int]]]
-
-        return self.evaluator.run(
-            dataloader=self.eval_dataloader,  # type: ignore
-            model=self.model,  # type: ignore
-            threshold=threshold,
-            sure=sure,
-            device=self.user_defined_device,
-            mini_batch_size=self.model_config.batch_size // 2,
-            bidirectional_combine_type=combine_type,
-            tk2word_prob=tk2word_prob,
-        )
+        return optimizer, scheduler, number_of_steps, training_device
 
 
 # TODO: consider wandb integration
