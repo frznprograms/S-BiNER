@@ -17,6 +17,7 @@ class DatasetConfig(ABC):
     context_sep: Optional[str] = " [WORD_SEP] "
     do_inference: bool = False
     log_output_dir: str = "logs"
+    max_sentence_length: int = 512
     save: bool = False
     debug_mode: bool = False
 
