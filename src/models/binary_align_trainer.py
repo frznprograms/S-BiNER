@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from functools import partial
+import shutil
 from typing import Optional, Union
 
 import torch
@@ -16,8 +17,8 @@ from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
 from src.datasets.datasets_gold import AlignmentDatasetGold
 from src.datasets.datasets_silver import AlignmentDatasetSilver
-from src.models.binary_align_factory import BinaryTokenClassificationFactory
 from src.models.binary_align_eval import BinaryAlignEvaluator
+from src.models.binary_align_factory import BinaryTokenClassificationFactory
 from src.utils.decorators import timed_execution
 from src.utils.helpers import collate_fn_span, set_device, set_seeds
 from src.utils.pipeline_step import PipelineStep
@@ -146,7 +147,11 @@ class BinaryAlignTrainer(PipelineStep):
                         )
                     # Use pbar.write instead of print to avoid interrupting progress bar
                     pbar.write(f"Batch Training loss: {tr_loss}")
-
+                    self._save_model_checkpoint(
+                        pbar=pbar, global_step=global_step, batch=batch
+                    )
+                    self._cleanup_old_checkpoints(pbar=pbar)
+                    # TODO: maybe can use self.pbar, then just delete it after training?
                 pbar.update(1)
 
             # Evaluation
@@ -204,6 +209,7 @@ class BinaryAlignTrainer(PipelineStep):
             tk2word_prob=tk2word_prob,
         )
 
+    @logger.catch(message="Failed to initialise training utils", reraise=True)
     def _init_training_utils(self):
         logger.debug("Initialising accelerator...")
         self.accelerator = Accelerator(
@@ -286,6 +292,80 @@ class BinaryAlignTrainer(PipelineStep):
         logger.success("Learning rate scheduler initialised.")
 
         return optimizer, scheduler, number_of_steps, training_device
+
+    @logger.catch(message="Failed to save model checkpoint", reraise=True)
+    def _save_model_checkpoint(self, pbar, global_step: int, batch):
+        should_save_checkpoint = False
+
+        if hasattr(self.train_config, "save_strategy"):
+            if self.train_config.save_strategy == "steps":
+                if (
+                    hasattr(self.train_config, "save_steps")
+                    and global_step % self.train_config.save_steps == 0  # type: ignore
+                ):
+                    should_save_checkpoint = True
+            elif self.train_config.save_strategy == "epoch":
+                # Call at the end of each epoch loop
+                should_save_checkpoint = True
+
+        # Default fallback to saving by steps
+        elif hasattr(self.train_config, "save_steps"):
+            if global_step % self.train_config.save_steps == 0:  # type: ignore
+                should_save_checkpoint = True
+
+        if should_save_checkpoint and self.accelerator.is_main_process:
+            try:
+                # Create the specific checkpoint directory
+                checkpoint_path = self.checkpoint_dir / f"checkpoint-{global_step}"
+                checkpoint_path.mkdir(parents=True, exist_ok=True)
+
+                # Save the model state to the specific checkpoint directory
+                self.accelerator.save_state(checkpoint_path)  # type: ignore
+
+                pbar.write(
+                    f"Checkpoint saved at step {global_step} to {checkpoint_path}"
+                )
+                # Clean up old checkpoints if save_total_limit is set
+                if (
+                    hasattr(self.train_config, "save_total_limit")
+                    and self.train_config.save_total_limit > 0  # type: ignore
+                ):
+                    self._cleanup_old_checkpoints(pbar)
+
+            except Exception as e:
+                pbar.write(f"Failed to save checkpoint at step {global_step}.")
+                logger.warning(e)
+
+    @logger.catch(message="Failed to delete old checkpoints", reraise=True)
+    def _cleanup_old_checkpoints(self, pbar):
+        checkpoint_dirs = []
+        for item in self.checkpoint_dir.iterdir():
+            if (
+                item.is_dir()
+                and item.name.startswith("checkpoint-")
+                and item.name != "final-checkpoint"
+            ):
+                try:
+                    step_num = int(item.name.split("-")[1])
+                    checkpoint_dirs.append((item.name, step_num, item))
+                except (IndexError, ValueError):
+                    continue
+
+        # Sort by step number (newest first)
+        checkpoint_dirs.sort(key=lambda x: x[1], reverse=True)
+
+        # Keep only save_total_limit most recent checkpoints
+        if len(checkpoint_dirs) > self.train_config.save_total_limit:  # type: ignore
+            checkpoints_to_remove = checkpoint_dirs[
+                self.train_config.save_total_limit :
+            ]
+
+            for dir_name, step_num, full_path in checkpoints_to_remove:
+                try:
+                    shutil.rmtree(full_path)
+                    pbar.write(f"Removed old checkpoint: {dir_name}")
+                except Exception as e:
+                    pbar.write(f"Failed to remove checkpoint {dir_name}: {e}")
 
 
 # TODO: consider wandb integration
