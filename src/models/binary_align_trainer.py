@@ -80,7 +80,7 @@ class BinaryAlignTrainer(PipelineStep):
             logger.warning(
                 f"Mismatch in training devices: \n"
                 f"Accelerator device: {training_device}\n"
-                f"User specified device: {self.user_defined_device}.\n"
+                f"User specified device: {self.user_defined_device}\n"
                 f"Accelerator device will be used."
             )
 
@@ -201,7 +201,6 @@ class BinaryAlignTrainer(PipelineStep):
 
                 global_step += 1
                 total_loss_scalar += round(loss.item(), 4)
-                # TODO: find out which loss metric is being used
 
                 # Logging
                 if global_step % self.train_config.logging_steps == 0:
