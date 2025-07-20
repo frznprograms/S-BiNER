@@ -90,7 +90,9 @@ class BinaryAlignTrainer(PipelineStep):
 
         # Check if model is pretrained and handle special tokens
         if not self.model_config.is_pretrained:
-            logger.debug("Adding special context token...")
+            logger.debug(
+                "Since model is not pretrained, adding special context token..."
+            )
             special_tokens_dict = {
                 "additional_special_tokens": [self.dataset_config.context_sep]
             }
@@ -106,14 +108,14 @@ class BinaryAlignTrainer(PipelineStep):
             **self.dataloader_config,  # type:ignore
         )
 
-        # NOW calculate training steps using the actual dataloader length
+        # calculate training steps using the actual dataloader length
         number_of_steps = (
             len(self.train_dataloader) * self.train_config.num_train_epochs
         )
         warmup_steps = int(self.model_config.warmup_ratio * number_of_steps)
 
-        logger.debug("Initialising optimizer...")
         # Setup optimizer
+        logger.debug("Initialising optimizer...")
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
             {
@@ -158,7 +160,7 @@ class BinaryAlignTrainer(PipelineStep):
             self.eval_dataloader = DataLoader(
                 self.eval_data.data,  # type:ignore
                 # **self.dataloader_config,  # type:ignore
-                batch_size=1,
+                batch_size=1,  # TODO: find out if this can increase?
                 num_workers=self.dataloader_config.num_workers,
                 shuffle=self.dataloader_config.shuffle,
                 pin_memory=self.dataloader_config.pin_memory,
@@ -167,16 +169,13 @@ class BinaryAlignTrainer(PipelineStep):
         logger.success("Accelerator prepared training components.")
 
         # Training loop
-        logger.debug("Starting training loop...")
         self.accelerator.wait_for_everyone()
+        logger.debug("Starting Training...")
         self.accelerator.print("=" * 50)
         self.accelerator.print(" Num examples = ", len(self.train_data))
         self.accelerator.print(" Num Epochs = ", self.train_config.num_train_epochs)
         self.accelerator.print(
             " Batch Size per device = ", self.model_config.batch_size
-        )
-        self.accelerator.print(
-            " Total batches per epoch = ", len(self.train_dataloader)
         )
         self.accelerator.print(" Total optimization steps = ", number_of_steps)
         self.accelerator.print("=" * 50)
@@ -202,6 +201,7 @@ class BinaryAlignTrainer(PipelineStep):
 
                 global_step += 1
                 total_loss_scalar += round(loss.item(), 4)
+                # TODO: find out which loss metric is being used
 
                 # Logging
                 if global_step % self.train_config.logging_steps == 0:
@@ -231,10 +231,9 @@ class BinaryAlignTrainer(PipelineStep):
                     pbar.write("Evaluating...")  # Clean message before evaluation
                     metrics = self.evaluate()
                     if metrics is not None:
-                        # Fixed: Use correct indices for each metric
                         precision, recall, aer, f1 = metrics
                         eval_msg = f"Epoch {epoch + 1} | Precision: {precision:.4f}, Recall: {recall:.4f}, AER: {aer:.4f}, F1: {f1:.4f}"
-                        pbar.write(eval_msg)  # Use pbar.write instead of logger.info
+                        pbar.write(eval_msg)
 
                         if self.accelerator.is_main_process:
                             self.accelerator.log(
@@ -249,7 +248,7 @@ class BinaryAlignTrainer(PipelineStep):
                 except Exception as e:
                     pbar.write(f"Evaluation failed: {e}")
                     logger.error(f"Evaluation failed: {e}")
-                    break
+            #         break
 
         pbar.close()
         logger.success("Training completed successfully.")
@@ -265,10 +264,8 @@ class BinaryAlignTrainer(PipelineStep):
 
         # Use default or configured values
         threshold = getattr(self.model_config, "threshold", 0.7)
-        combine_type = getattr(
-            self.model_config, "bidirectional_combine_type", "intersection"
-        )
-        tk2word_prob = getattr(self.model_config, "tk2word_prob", "mean")
+        combine_type = getattr(self.model_config, "bidirectional_combine_type", "union")
+        tk2word_prob = getattr(self.model_config, "tk2word_prob", "max")
 
         # Sure alignments only
         sure = self.eval_data.alignment_sure  # type:ignore expected: list[set[tuple[int, int]]]
@@ -279,7 +276,7 @@ class BinaryAlignTrainer(PipelineStep):
             threshold=threshold,
             sure=sure,
             device=self.accelerator.device,
-            mini_batch_size=self.model_config.batch_size,
+            mini_batch_size=self.model_config.batch_size // 2,
             bidirectional_combine_type=combine_type,
             tk2word_prob=tk2word_prob,
         )
@@ -297,13 +294,13 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=300,
+        limit=50,
     )
     eval_dataset_config = DatasetConfig(
         source_lines_path="data/cleaned_data/dev.src",
         target_lines_path="data/cleaned_data/dev.tgt",
         alignments_path="data/cleaned_data/dev.talp",
-        limit=30,
+        limit=10,
         do_inference=True,
     )
     dataloader_config = DataLoaderConfig(collate_fn=collate_fn_span)

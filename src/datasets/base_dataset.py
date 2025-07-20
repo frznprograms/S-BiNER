@@ -1,8 +1,7 @@
 import gc
 import itertools
 import os
-
-# import tracemalloc
+import tracemalloc
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -84,13 +83,13 @@ class BaseDataset(ABC):
             data=self.data,
         )
 
-        # self.prepare_data(
-        #     source_lines=self.source_lines,
-        #     target_lines=self.target_lines,
-        #     alignments=self.alignments,
-        #     data=self.reverse_data,
-        #     reverse=True,
-        # )
+        self.prepare_data(
+            source_lines=self.source_lines,
+            target_lines=self.target_lines,
+            alignments=self.alignments,
+            data=self.reverse_data,
+            reverse=True,
+        )
 
     @timed_execution
     @logger.catch(message="Failed to prepare dataset", reraise=True)
@@ -102,13 +101,13 @@ class BaseDataset(ABC):
         data: list[dict],
         reverse: bool = False,
     ):
-        progress_bar = tqdm(total=len(source_lines))
-        # tracemalloc.start()
+        pbar = tqdm(total=len(source_lines))
+        tracemalloc.start()
 
         for i, (source_line, target_line, alignment) in enumerate(
             zip(source_lines, target_lines, alignments)
         ):
-            progress_bar.update(1)
+            pbar.update(1)
             # symmetrisation
             if reverse:
                 source_line, target_line = target_line, source_line
@@ -175,10 +174,10 @@ class BaseDataset(ABC):
             )
             gc.collect()
 
-        # current, peak = tracemalloc.get_traced_memory()
-        # print(
-        #     f"[Post-deletion] Current: {current / 1e6:.2f} MB; Peak: {peak / 1e6:.2f} MB"
-        # )
+        current, peak = tracemalloc.get_traced_memory()
+        pbar.write(
+            f"[Post-deletion] Memory Usage | Current: {current / 1e6:.2f} MB; Peak: {peak / 1e6:.2f} MB"
+        )
 
     @logger.catch(
         message="Error in generating target byte-pair encodings", reraise=True

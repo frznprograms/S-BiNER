@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from loguru import logger
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from src.models.binary_align_models import (
     RobertaModelForBinaryTokenClassification,
@@ -38,6 +39,7 @@ class BinaryAlignEvaluator(PipelineStep):
         bidirectional_combine_type: str,
         tk2word_prob: str,
     ):
+        # TODO: find out if need to use partial()
         return self._bidirectional_eval_span(
             dataloader=dataloader,
             model=model,
@@ -50,6 +52,7 @@ class BinaryAlignEvaluator(PipelineStep):
         )
 
     @logger.catch(message="Unable to get bidirectional metrics", reraise=True)
+    @torch.no_grad
     def _bidirectional_eval_span(
         self,
         dataloader: DataLoader,
@@ -65,17 +68,29 @@ class BinaryAlignEvaluator(PipelineStep):
 
         predicted_sure = []
 
-        for sample in dataloader:
+        # note that each sample is actually a batch of batch_size
+        for sample in tqdm(dataloader):
             if isinstance(sample, list):  # Bidirectional eval
                 sample_1, sample_2 = sample
                 sample_preds_1 = self._get_sample_probs(
-                    sample_1, model, device, mini_batch_size, tk2word_prob
+                    sample=sample_1,
+                    model=model,
+                    device=device,
+                    mini_batch_size=mini_batch_size,
+                    tk2word_prob=tk2word_prob,
                 )
                 sample_preds_2 = self._get_sample_probs(
-                    sample_2, model, device, mini_batch_size, tk2word_prob, reverse=True
+                    sample=sample_2,
+                    model=model,
+                    device=device,
+                    mini_batch_size=mini_batch_size,
+                    tk2word_prob=tk2word_prob,
+                    reverse=True,
                 )
                 all_probs = self._combine_pred_probs(
-                    sample_preds_1, sample_preds_2, bidirectional_combine_type
+                    preds_1=sample_preds_1,
+                    preds_2=sample_preds_2,
+                    method=bidirectional_combine_type,
                 )
             else:  # Unidirectional
                 all_probs = self._get_sample_probs(
@@ -108,16 +123,14 @@ class BinaryAlignEvaluator(PipelineStep):
         sigmoid: Callable = nn.Sigmoid(),
     ) -> dict[tuple[int, int], float]:
         sample_preds = defaultdict(list)
-        if sample["input_ids"].dim() == 3:
-            sample["input_ids"] = sample["input_ids"].squeeze(0)
-            sample["attention_mask"] = sample["attention_mask"].squeeze(0)
-            if "bpe2word_map" in sample:
-                sample["bpe2word_map"] = sample["bpe2word_map"].squeeze(0)
-        all_input_ids = sample["input_ids"].split(mini_batch_size)
-        all_attention_mask = sample["attention_mask"].split(mini_batch_size)
-        bpe2word_map = sample["bpe2word_map"]
+        # access index 0 to remove wrapper dimension: (1, rows, cols) -> (rows, cols)
+        all_input_ids = sample["input_ids"][0].split(mini_batch_size)
+        all_attention_mask = sample["attention_mask"][0].split(mini_batch_size)
+        bpe2word_map = sample["bpe2word_map"][0].split(mini_batch_size)
 
-        bpe2word_map = bpe2word_map.split(mini_batch_size)
+        # BinaryAlignEvaluator.view_input_ids(
+        #     sample=sample, mini_batch_size=mini_batch_size
+        # )
         count = 0
 
         for input_ids, attention_mask, bpe2word_batch in zip(
@@ -126,9 +139,7 @@ class BinaryAlignEvaluator(PipelineStep):
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)
 
-            with torch.no_grad():
-                logits = model(input_ids, attention_mask=attention_mask).logits
-
+            logits = model(input_ids, attention_mask=attention_mask).logits
             if logits.shape[2] == 2:
                 probs = softmax(logits)[:, :, 1]
             else:
@@ -222,3 +233,81 @@ class BinaryAlignEvaluator(PipelineStep):
         logger.debug(f"  F1: {f1:.4f}")
 
         return precision, recall, aer, f1
+
+    @staticmethod
+    def view_input_ids(sample, mini_batch_size: int) -> None:
+        print("=" * 50)
+        print("Summary:")
+        print(
+            f"Input ids is a {type(sample['input_ids'])} of shape {sample['input_ids'].shape}"
+        )
+        print(
+            f"Input ids element is a {type(sample['input_ids'][0])} of shape {sample['input_ids'][0].shape}"
+        )
+        print("=" * 50)
+        print(
+            f"Attention mask is a {type(sample['attention_mask'])} of shape {sample['attention_mask'].shape}"
+        )
+        print(
+            f"Attention mask element is a {type(sample['attention_mask'][0])} of shape {sample['attention_mask'][0].shape}"
+        )
+        print("=" * 50)
+        print(
+            f"bpe2word mapping is a {type(sample['bpe2word_map'])} of shape {sample['bpe2word_map'].shape}"
+        )
+        print(
+            f"bpe2word mapping element is a {type(sample['bpe2word_map'][0])} of shape {sample['bpe2word_map'][0].shape}"
+        )
+        print("=" * 50)
+        print("Inputs before splitting into mini batches:")
+        print(f"Input ids: {sample['input_ids'][0]}")
+        print(f"Attention mask: {sample['attention_mask'][0]}")
+        print(f"bpe2word mapping: {sample['bpe2word_map']}")
+        print("=" * 50)
+        print("Inputs after splitting into mini batches:")
+        print(f"Input ids: {sample['input_ids'][0].split(mini_batch_size)}")
+        print(f"Attention mask: {sample['attention_mask'][0].split(mini_batch_size)}")
+        print(f"bpe2word mapping: {sample['bpe2word_map'][0].split(mini_batch_size)}")
+        print("=" * 50)
+
+
+if __name__ == "__main__":
+    from transformers import AutoTokenizer
+    from src.configs.model_config import ModelConfig
+    from src.configs.dataset_config import DatasetConfig, DataLoaderConfig
+    from src.configs.train_config import TrainConfig
+    from src.datasets.datasets_silver import AlignmentDatasetSilver
+    from src.models.binary_align_trainer import BinaryAlignTrainer
+    from src.utils.helpers import collate_fn_span
+
+    model_config = ModelConfig(model_name_or_path="FacebookAI/roberta-base")
+    train_config = TrainConfig(experiment_name="trainer-test", mixed_precision="no")
+    train_dataset_config = DatasetConfig(
+        source_lines_path="data/cleaned_data/train.src",
+        target_lines_path="data/cleaned_data/train.tgt",
+        alignments_path="data/cleaned_data/train.talp",
+        limit=4,
+    )
+    eval_dataset_config = DatasetConfig(
+        source_lines_path="data/cleaned_data/dev.src",
+        target_lines_path="data/cleaned_data/dev.tgt",
+        alignments_path="data/cleaned_data/dev.talp",
+        limit=2,
+        do_inference=True,
+    )
+    dataloader_config = DataLoaderConfig(collate_fn=collate_fn_span)
+    tok = AutoTokenizer.from_pretrained(model_config.model_name_or_path)
+    train_data = AlignmentDatasetSilver(tokenizer=tok, **train_dataset_config.__dict__)
+    eval_data = AlignmentDatasetSilver(tokenizer=tok, **eval_dataset_config.__dict__)
+
+    trainer = BinaryAlignTrainer(
+        tokenizer=tok,
+        model_config=model_config,
+        train_config=train_config,
+        dataset_config=train_dataset_config,
+        dataloader_config=dataloader_config,
+        train_data=train_data,
+        eval_data=eval_data,
+        seed_num=1,
+    )
+    trainer.run()

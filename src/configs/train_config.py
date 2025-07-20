@@ -8,7 +8,7 @@ from easydict import EasyDict
 @dataclass
 class TrainConfig(ABC):
     experiment_name: str
-    num_train_epochs: int = 5
+    num_train_epochs: int = 3
     mixed_precision: str = "fp16"
     log_with: Optional[str] = "wandb"
     logging_steps: int = 100

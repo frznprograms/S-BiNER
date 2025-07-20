@@ -49,7 +49,7 @@ def set_device(device_type: str = "auto") -> str:
     return device
 
 
-def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> None:
+def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> int:
     if seed_num is None:
         seed_num = 42
     torch.manual_seed(seed_num)
@@ -61,6 +61,8 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> None:
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+    return seed_num
 
 
 @logger.catch(message="Unable to execute dataloader collate function", reraise=True)
