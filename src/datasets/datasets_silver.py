@@ -65,10 +65,8 @@ class AlignmentDatasetSilver(BaseDataset, PipelineStep):
                 )
 
         if self.debug_mode:
-            BaseDataset.view_sure_alignments(self.sure[-1])
-            BaseDataset.view_labels(
-                source_labels=source_labels, target_labels=target_labels
-            )
+            self.view_sure_alignments(self.sure[-1])
+            self.view_labels(source_labels=source_labels, target_labels=target_labels)
 
         # Prepare final data structure
         if self.do_inference:

@@ -41,7 +41,6 @@ class BinaryAlignEvaluator(PipelineStep):
         tk2word_prob: str,
     ):
         model.eval()
-        # TODO: find out if need to use partial()
         return self._bidirectional_eval_span(
             dataloader=dataloader,
             model=model,
@@ -72,9 +71,7 @@ class BinaryAlignEvaluator(PipelineStep):
         # note that each sample is actually a batch of batch_size
         for sample in tqdm(dataloader):
             if self.debug_mode:
-                BinaryAlignEvaluator.view_model_structure(
-                    sample=sample, model=model, device=device
-                )
+                self.view_model_structure(sample=sample, model=model, device=device)
                 break
             if isinstance(sample, list):  # Bidirectional eval
                 sample_1, sample_2 = sample
@@ -108,10 +105,8 @@ class BinaryAlignEvaluator(PipelineStep):
             predicted_sure.append(sure_set)
 
             if self.debug_mode:
-                BinaryAlignEvaluator.view_gold_alignments(sure)
-                BinaryAlignEvaluator.view_all_probs(
-                    all_probs=all_probs, threshold=threshold
-                )
+                self.view_gold_alignments(sure)
+                self.view_all_probs(all_probs=all_probs, threshold=threshold)
 
         metrics = self.calculate_metrics_sure_only(
             gold_sure_alignments=sure,
@@ -143,9 +138,7 @@ class BinaryAlignEvaluator(PipelineStep):
         bpe2word_map = sample["bpe2word_map"].tolist()
 
         if self.debug_mode:
-            BinaryAlignEvaluator.view_input_ids(
-                sample=sample, mini_batch_size=mini_batch_size
-            )
+            self.view_input_ids(sample=sample, mini_batch_size=mini_batch_size)
 
         global_sentence_idx = 0  # Global counter across all mini-batches
 
@@ -267,8 +260,7 @@ class BinaryAlignEvaluator(PipelineStep):
 
         return precision, recall, aer, f1_score
 
-    @staticmethod
-    def view_input_ids(sample, mini_batch_size: int) -> None:
+    def view_input_ids(self, sample, mini_batch_size: int) -> None:
         print("=" * 50)
         print("Summary:")
         print(
@@ -303,8 +295,7 @@ class BinaryAlignEvaluator(PipelineStep):
         print(f"bpe2word mapping: {sample['bpe2word_map'][0].tolist()}")
         print("=" * 50)
 
-    @staticmethod
-    def view_model_structure(sample, model, device):
+    def view_model_structure(self, sample, model, device):
         """Debug function to understand what the model is actually predicting"""
 
         print("=== MODEL STRUCTURE ANALYSIS ===")
@@ -360,8 +351,7 @@ class BinaryAlignEvaluator(PipelineStep):
 
         return logits, probs
 
-    @staticmethod
-    def view_gold_alignments(sure_alignments) -> None:
+    def view_gold_alignments(self, sure_alignments) -> None:
         """Analyze the structure of gold alignments"""
         print("=== GOLD ALIGNMENTS ANALYSIS ===")
 
@@ -379,8 +369,7 @@ class BinaryAlignEvaluator(PipelineStep):
             print(f"  Unique source words: {len(set(sources))}")
             print(f"  Unique target words: {len(set(targets))}")
 
-    @staticmethod
-    def view_all_probs(all_probs, threshold: float) -> None:
+    def view_all_probs(self, all_probs, threshold: float) -> None:
         print(f"Debug: all_probs type: {type(all_probs)}")
         print(f"Debug: all_probs length: {len(all_probs)}")
         if len(all_probs) > 0:

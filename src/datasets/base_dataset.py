@@ -138,13 +138,13 @@ class BaseDataset(ABC):
             # target_bpe2word = target_bpe2word[:actual_input_id_length]
 
             if self.debug_mode:
-                BaseDataset.view_wbw_examples(examples=word_by_word_examples)
-                BaseDataset.view_input_id_dict(
+                self.view_wbw_examples(examples=word_by_word_examples)
+                self.view_input_id_dict(
                     source_sentence=source_sentence,
                     target_sentence=target_sentence,
                     input_id_dict=input_id_dict,
                 )
-                BaseDataset.view_bpe2word_mappings(
+                self.view_bpe2word_mappings(
                     input_id_dict=input_id_dict,
                     source_bpe2word=source_bpe2word,
                     target_bpe2word=target_bpe2word,
@@ -304,8 +304,9 @@ class BaseDataset(ABC):
         pass
 
     # helper static functions for debugging
-    @staticmethod
+
     def view_input_id_dict(
+        self,
         source_sentence: list[str],
         target_sentence: list[str],
         input_id_dict: dict[str, Any],
@@ -351,8 +352,7 @@ class BaseDataset(ABC):
         )[:, :512]
         print(f"Input ids shape: {input_ids.shape}")
 
-    @staticmethod
-    def view_wbw_examples(examples: list[list[str]]) -> None:
+    def view_wbw_examples(self, examples: list[list[str]]) -> None:
         logger.debug("Showing word_by_word_examples")
         print("=" * 50)
         print("Word by word examples:")
@@ -360,8 +360,8 @@ class BaseDataset(ABC):
             print(f"\t{example}")
         print("=" * 50)
 
-    @staticmethod
     def view_bpe2word_mappings(
+        self,
         input_id_dict: dict[str, Any],
         source_bpe2word: torch.Tensor,
         target_bpe2word: torch.Tensor,
@@ -395,8 +395,7 @@ class BaseDataset(ABC):
         print(target_bpe2word)
         print("=" * 50)
 
-    @staticmethod
-    def view_sure_alignments(sure_alignments: set[tuple[int, int]]):
+    def view_sure_alignments(self, sure_alignments: set[tuple[int, int]]):
         logger.info("Showing identified sure alignments:")
         most_recent_matches = sure_alignments
         print(f"Number of sure matches: {len(most_recent_matches)}")
@@ -404,8 +403,9 @@ class BaseDataset(ABC):
         for match in most_recent_matches:
             print(f"\t{match}")
 
-    @staticmethod
-    def view_labels(source_labels: torch.Tensor, target_labels: torch.Tensor) -> None:
+    def view_labels(
+        self, source_labels: torch.Tensor, target_labels: torch.Tensor
+    ) -> None:
         logger.info("Showing generated labels:")
         print("=" * 50)
         print(f"Source labels shape: {source_labels.shape}")
