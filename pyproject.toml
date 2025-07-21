@@ -19,4 +19,5 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.53.0",
     "typing>=3.10.0.0",
+    "wandb>=0.21.0",
 ]
