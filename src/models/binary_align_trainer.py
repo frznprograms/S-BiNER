@@ -112,6 +112,8 @@ class BinaryAlignTrainer(PipelineStep):
         )
         global_step, global_step_last_logged = 0, 0
         total_loss_scalar = 0.0
+        lowest_recorded_loss = float("inf")
+        num_steps_testing_patience = 0
 
         for epoch in range(self.train_config.num_train_epochs):
             for batch in self.train_dataloader:
@@ -137,14 +139,13 @@ class BinaryAlignTrainer(PipelineStep):
                     global_step_last_logged = global_step
                     total_loss_scalar = 0.0
                     if self.accelerator.is_main_process:
-                        # TODO: find out where these logs are saved
                         self.accelerator.log(
                             {
                                 "epoch": epoch,
                                 "train_loss": tr_loss,
                                 "learning_rate": scheduler.get_last_lr()[0],
-                                "step": global_step,
-                            }
+                            },
+                            step=global_step,
                         )
                     # Use pbar.write instead of print to avoid interrupting progress bar
                     pbar.write(f"Batch Training loss: {tr_loss}")
@@ -157,7 +158,7 @@ class BinaryAlignTrainer(PipelineStep):
             if self.eval_data is not None and hasattr(self, "eval_dataloader"):
                 try:
                     self.accelerator.wait_for_everyone()
-                    pbar.write("Evaluating...")  # Clean message before evaluation
+                    pbar.write("Evaluating...")
                     metrics = self.evaluate()
                     if metrics is not None:
                         precision, recall, aer, f1 = metrics
@@ -167,13 +168,28 @@ class BinaryAlignTrainer(PipelineStep):
                         if self.accelerator.is_main_process:
                             self.accelerator.log(
                                 {
-                                    "step": global_step,
                                     "precision": precision,
                                     "recall": recall,
                                     "aer": aer,
                                     "f1": f1,
-                                }
+                                },
+                                step=global_step,
                             )
+                        # test patience; stop training if loss does not improve over accepted number of steps
+                        if train_config.early_stopping_patience:
+                            if f1 < lowest_recorded_loss:
+                                lowest_recorded_loss = f1
+                            else:
+                                num_steps_testing_patience += 1
+                                if (
+                                    num_steps_testing_patience
+                                    >= train_config.early_stopping_patience
+                                ):
+                                    logger.warning(
+                                        f"Stopping training at step {global_step} as validation loss did not improve."
+                                    )
+                                    break
+
                 except Exception as e:
                     pbar.write(f"Evaluation failed: {e}, continuing training...")
 
@@ -232,7 +248,9 @@ class BinaryAlignTrainer(PipelineStep):
         )
 
         # Initialize tracking
-        self.accelerator.init_trackers(project_name=self.train_config.experiment_name)
+        self.accelerator.init_trackers(
+            project_name=self.train_config.experiment_name,
+        )
         logger.success("Accelerator initialised.")
 
         # Check if model is pretrained and handle special tokens

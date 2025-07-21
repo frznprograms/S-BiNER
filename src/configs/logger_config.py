@@ -10,7 +10,7 @@ DEBUG = True
 
 
 class LoggedProcess:
-    def __init__(self, output_dir: str = "/logs"):
+    def __init__(self, output_dir: str = "logs"):
         self.output_dir = Path(output_dir)
         self.make_output_directory()  # Create directories first
         self.setup_logger()
@@ -20,7 +20,7 @@ class LoggedProcess:
         """Makes required output directories"""
         dirs = [
             self.output_dir,
-            self.output_dir / "logs",
+            self.output_dir / "generic",
             self.output_dir / "debug",
             self.output_dir / "error",
         ]

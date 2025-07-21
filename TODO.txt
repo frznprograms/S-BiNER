@@ -10,11 +10,12 @@ Dataset Preparation
 - __len__ ✅
 
 BinaryAlignment
-- which tokenizer to use to get better span separation for Chinese?
-    - hanlp tokenizer for chinese, XLM-R for English -> best of both words approach
+- which tokenizer to use to get better span separation for Chinese? ✅
+    - hanlp tokenizer for chinese, XLM-R for English -> best of both words approach ✅
 - Contrastive learning approach could improve performance even more
-- Encoder model integration to generate alignments
-    - XLM-R? Maybe need to use mBERT or BERT-base
+- Encoder model integration to generate alignments  ✅
+    - XLM-R? Maybe need to use mBERT or BERT-base  ✅
+- early stopping ✅
 
 NER Annotation Projection
 - use alignments to project labels onto new dataset
@@ -25,8 +26,8 @@ NER Annotation Projection
 Evaluation
 - evaluate quality of translation using TranslationEvaluator
 - use the parallel corpora for csit to evaluate ner scores
-- f1 score? 
-- AER?
+- f1 score?  ✅
+- AER?  ✅
 
 Documentation
 - Organise better

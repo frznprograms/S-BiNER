@@ -20,7 +20,7 @@ class TrainConfig(ABC):
     load_best_model_at_end: bool = True
     metric_for_best_model: str = "eval_loss"
     greater_is_better: bool = False
-    early_stopping_patience: Optional[int] = None
+    early_stopping_patience: Optional[int] = 1
     dataloader_num_workers: int = 0
     dataloader_pin_memory: bool = True
     gradient_accumulation_steps: int = 1
