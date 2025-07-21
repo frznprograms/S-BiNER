@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 import shutil
 from typing import Optional, Union
+import os
 
 import torch
 from accelerate import Accelerator
@@ -33,7 +34,7 @@ class BinaryAlignTrainer(PipelineStep):
     dataloader_config: DataLoaderConfig
     train_data: Union[AlignmentDatasetGold, AlignmentDatasetSilver]
     eval_data: Optional[Union[AlignmentDatasetGold, AlignmentDatasetSilver]] = None
-    device_type: str = "cpu"  # "auto"
+    device_type: str = "auto"
     seed_num: int = 42
     priority_metric_for_optimisation: Optional[str] = "aer"
 
@@ -69,9 +70,7 @@ class BinaryAlignTrainer(PipelineStep):
     def run(self):
         logger.debug("Starting training...")
 
-        optimizer, scheduler, number_of_steps, training_device = (
-            self._init_training_utils()
-        )
+        optimizer, scheduler, number_of_steps = self._init_training_utils()
 
         # Prepare everything with accelerator
         logger.debug("Accelerator preparing training components...")
@@ -86,10 +85,10 @@ class BinaryAlignTrainer(PipelineStep):
             self.eval_dataloader = DataLoader(
                 self.eval_data.data,  # type:ignore
                 # **self.dataloader_config,  # type:ignore
-                batch_size=1,  # TODO: find out if this can increase?
-                num_workers=self.dataloader_config.num_workers,
-                shuffle=self.dataloader_config.shuffle,
-                pin_memory=self.dataloader_config.pin_memory,
+                batch_size=1,
+                num_workers=0,
+                pin_memory=False,
+                shuffle=True,
             )
             self.eval_dataloader = self.accelerator.prepare(self.eval_dataloader)
         logger.success("Accelerator prepared training components.")
@@ -104,6 +103,7 @@ class BinaryAlignTrainer(PipelineStep):
             " Batch Size per device = ", self.model_config.batch_size
         )
         self.accelerator.print(" Total optimization steps = ", number_of_steps)
+        self.accelerator.print(f" Training device =  {self.accelerator.device}")
         self.accelerator.print("=" * 50)
 
         pbar = tqdm(
@@ -115,7 +115,8 @@ class BinaryAlignTrainer(PipelineStep):
 
         for epoch in range(self.train_config.num_train_epochs):
             for batch in self.train_dataloader:
-                batch = {k: v.to(training_device) for k, v in batch.items()}
+                # Remove manual device transfer - Accelerator handles this
+                # batch = {k: v.to(training_device) for k, v in batch.items()}
 
                 loss = self.model(**batch).loss
 
@@ -147,11 +148,9 @@ class BinaryAlignTrainer(PipelineStep):
                         )
                     # Use pbar.write instead of print to avoid interrupting progress bar
                     pbar.write(f"Batch Training loss: {tr_loss}")
-                    self._save_model_checkpoint(
-                        pbar=pbar, global_step=global_step, batch=batch
-                    )
+                    self._save_model_checkpoint(pbar=pbar, global_step=global_step)
                     self._cleanup_old_checkpoints(pbar=pbar)
-                    # TODO: maybe can use self.pbar, then just delete it after training?
+
                 pbar.update(1)
 
             # Evaluation
@@ -178,6 +177,9 @@ class BinaryAlignTrainer(PipelineStep):
                 except Exception as e:
                     pbar.write(f"Evaluation failed: {e}, continuing training...")
 
+        # save model state from end of training
+        self.accelerator.save_state(self.checkpoint_dir / "checkpoint-final-checkpoint")  # type: ignore
+
         pbar.close()
         logger.success("Training completed successfully.")
 
@@ -203,7 +205,7 @@ class BinaryAlignTrainer(PipelineStep):
             model=self.model,  # type: ignore
             threshold=threshold,
             sure=sure,
-            device=self.user_defined_device,
+            device=self.accelerator.device,  # Use accelerator device consistently
             mini_batch_size=self.model_config.batch_size // 2,
             bidirectional_combine_type=combine_type,
             tk2word_prob=tk2word_prob,
@@ -212,21 +214,22 @@ class BinaryAlignTrainer(PipelineStep):
     @logger.catch(message="Failed to initialise training utils", reraise=True)
     def _init_training_utils(self):
         logger.debug("Initialising accelerator...")
+
+        # Set environment variable to force Accelerator to use the specified device
+        if self.user_defined_device == "mps":
+            os.environ["ACCELERATE_TORCH_DEVICE"] = "mps"
+        elif self.user_defined_device == "cuda":
+            os.environ["ACCELERATE_TORCH_DEVICE"] = (
+                f"cuda:{self.user_defined_device.index or 0}"
+            )
+        else:
+            os.environ["ACCELERATE_TORCH_DEVICE"] = "cpu"
+
         self.accelerator = Accelerator(
             mixed_precision=self.train_config.mixed_precision,
             log_with=self.train_config.log_with,
             gradient_accumulation_steps=self.train_config.gradient_accumulation_steps,
         )
-
-        training_device = self.accelerator.device
-        if training_device != self.user_defined_device:
-            logger.warning(
-                f"Mismatch in training devices: \n"
-                f"Accelerator device: {training_device}\n"
-                f"User specified device: {self.user_defined_device}\n"
-                f"User-specified device will be used."
-            )
-            training_device = self.user_defined_device
 
         # Initialize tracking
         self.accelerator.init_trackers(project_name=self.train_config.experiment_name)
@@ -291,10 +294,14 @@ class BinaryAlignTrainer(PipelineStep):
         )
         logger.success("Learning rate scheduler initialised.")
 
-        return optimizer, scheduler, number_of_steps, training_device
+        return optimizer, scheduler, number_of_steps
 
     @logger.catch(message="Failed to save model checkpoint", reraise=True)
-    def _save_model_checkpoint(self, pbar, global_step: int, batch):
+    def _save_model_checkpoint(
+        self,
+        pbar,
+        global_step: int,
+    ):
         should_save_checkpoint = False
 
         if hasattr(self.train_config, "save_strategy"):
@@ -338,6 +345,8 @@ class BinaryAlignTrainer(PipelineStep):
 
     @logger.catch(message="Failed to delete old checkpoints", reraise=True)
     def _cleanup_old_checkpoints(self, pbar):
+        """Needs to take pbar as an argument so that the print statements are
+        nicer to read."""
         checkpoint_dirs = []
         for item in self.checkpoint_dir.iterdir():
             if (

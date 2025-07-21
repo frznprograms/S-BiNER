@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 class PipelineStep(ABC):
-    checkpoint_dir: Path = Path("/checkpoints")
+    checkpoint_dir: Path = Path("checkpoints")
     debug_mode: bool = False
 
     def __post_init__(self):

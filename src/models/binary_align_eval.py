@@ -183,9 +183,9 @@ class BinaryAlignEvaluator(PipelineStep):
             global_sentence_idx += input_ids.size(0)
 
         result = {k: AGG_FN[tk2word_prob](v) for k, v in sample_preds.items()}
-        print(
-            f"Debug _get_sample_probs: returning {len(result)} items, sample: {list(result.items())[-5:-1]}"
-        )
+        # print(
+        #     f"Debug _get_sample_probs: returning {len(result)} items, sample: {list(result.items())[-5:-1]}"
+        # )
         return result
 
     @logger.catch(
@@ -225,10 +225,10 @@ class BinaryAlignEvaluator(PipelineStep):
         assert len(gold_sure_alignments) == len(predicted_sure_alignments), (
             f"Mismatch in number of sentence pairs: {len(gold_sure_alignments)} vs {len(predicted_sure_alignments)}"
         )
-        print(f"Debug: Gold alignments sample: {list(gold_sure_alignments)[:3]}")
-        print(
-            f"Debug: Predicted alignments sample: {list(predicted_sure_alignments)[:3]}"
-        )
+        # print(f"Debug: Gold alignments sample: {list(gold_sure_alignments)[:3]}")
+        # print(
+        #     f"Debug: Predicted alignments sample: {list(predicted_sure_alignments)[:3]}"
+        # )
 
         sum_a_intersect_s, sum_s, sum_a = 0.0, 0.0, 0.0
 
@@ -256,14 +256,14 @@ class BinaryAlignEvaluator(PipelineStep):
         )
 
         # Add debug information
-        logger.debug("Metrics calculation:")
-        logger.debug(f"  Total predicted alignments: {sum_a}")
-        logger.debug(f"  Total gold alignments: {sum_s}")
-        logger.debug(f"  Correct predictions: {sum_a_intersect_s}")
-        logger.debug(f"  Precision: {precision:.4f}")
-        logger.debug(f"  Recall: {recall:.4f}")
-        logger.debug(f"  AER: {aer:.4f}")
-        logger.debug(f"  F1: {f1_score:.4f}")
+        # logger.debug("Metrics calculation:")
+        # logger.debug(f"  Total predicted alignments: {sum_a}")
+        # logger.debug(f"  Total gold alignments: {sum_s}")
+        # logger.debug(f"  Correct predictions: {sum_a_intersect_s}")
+        # logger.debug(f"  Precision: {precision:.4f}")
+        # logger.debug(f"  Recall: {recall:.4f}")
+        # logger.debug(f"  AER: {aer:.4f}")
+        # logger.debug(f"  F1: {f1_score:.4f}")
 
         return precision, recall, aer, f1_score
 
