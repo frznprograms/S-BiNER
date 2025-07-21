@@ -52,6 +52,10 @@ class BinaryAlignTrainer(PipelineStep):
         self.dataloader_config = EasyDict(self.dataloader_config.__dict__)  # type: ignore
         self.train_dataloader, self.eval_dataloader, self.evaluator = None, None, None
 
+        # setup wandb account if any
+        if self.train_config.log_with == "wanb":
+            self._init_wandb_tracker()
+
         logger.debug("Loaded configuration objects.")
 
         # Initialize model factory

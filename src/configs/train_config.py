@@ -16,11 +16,11 @@ class TrainConfig(ABC):
     save_steps: Optional[int] = 50
     eval_strategy: str = "epoch"
     eval_steps: Optional[int] = None
-    save_total_limit: Optional[int] = 5
+    save_total_limit: Optional[int] = 3
     load_best_model_at_end: bool = True
     metric_for_best_model: str = "eval_loss"
     greater_is_better: bool = False
-    early_stopping_patience: Optional[int] = 1
+    early_stopping_patience: Optional[int] = None
     dataloader_num_workers: int = 0
     dataloader_pin_memory: bool = True
     gradient_accumulation_steps: int = 1
