@@ -67,7 +67,7 @@ class BinaryAlignTrainer(PipelineStep):
         # Initialize model
         self.model = self.model_factory()
         logger.success("Model initialized.")
-        logger.success("BinaryAlignTrainer initialised.")
+        logger.success(f"{self.__class__.__name__} initialized successfully")
 
     @timed_execution
     @logger.catch(message="Failed to complete training.", reraise=True)

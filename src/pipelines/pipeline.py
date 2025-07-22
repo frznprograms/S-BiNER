@@ -1,148 +1,59 @@
-import os
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
-import yaml
 from loguru import logger
-from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 
-from src.configs.dataset_config import DatasetConfig, DataLoaderConfig
+from src.configs.dataset_config import DataLoaderConfig, DatasetConfig
 from src.configs.logger_config import LoggedProcess
 from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
-from src.datasets.datasets_gold import AlignmentDatasetGold
-from src.datasets.datasets_silver import AlignmentDatasetSilver
-from src.models.binary_align_trainer import BinaryAlignTrainer
-from easydict import EasyDict
+from src.utils.helpers import parse_config
 
 
 @dataclass
 class AlignmentGenerationPipeline(LoggedProcess):
-    model_config: Union[ModelConfig, str, dict]
-    train_config: Union[TrainConfig, str, dict]
-    dataset_config: Union[DatasetConfig, str, dict]
-    dataloader_config: Union[DataLoader, str, dict]
-    tokenizer: Optional[PreTrainedTokenizer] = None
-    log_output_dir: str = "logs"
-
-    # Internal attributes
-    _model_config: ModelConfig = field(init=False)
-    _train_config: TrainConfig = field(init=False)
-    _dataset_config: DatasetConfig = field(init=False)
-    _tokenizer: PreTrainedTokenizer = field(init=False)
-    _dataset: Union[AlignmentDatasetSilver, AlignmentDatasetGold] = field(init=False)
-    # _train_dataloader: DataLoader = field(init=False)
-    # _eval_dataloader: Optional[DataLoader] = field(init=False, default=None)
+    tokenizer: Optional[PreTrainedTokenizer]
+    model_config: Union[ModelConfig, str, dict] = field(init=False)
+    train_config: Union[TrainConfig, str, dict] = field(init=False)
+    dataset_config: Union[DatasetConfig, str, dict] = field(init=False)
+    dataloader_config: Union[DataLoaderConfig, str, dict] = field(init=False)
 
     def __post_init__(self):
-        LoggedProcess.__init__(self, output_dir=self.log_output_dir)
-
-        # Parse all configurations
-        self._model_config = self._parse_config(self.model_config, ModelConfig)  # type:ignore
-        self._train_config = self._parse_config(self.train_config, TrainConfig)  # type:ignore
-        self._dataset_config = self._parse_config(self.dataset_config, DatasetConfig)  # type: ignore
-        self._dataloader_config = self._parse_config(
-            self.dataloader_config, DataLoaderConfig
+        logger.info("Loading configurations...")
+        self.model_config = parse_config(
+            config=self.model_config, config_class=ModelConfig
         )
-        logger.success("Loaded configurations.")
-
-        self._initialize_tokenizer()
-        self._initialize_dataset()
-        # TODO: split into train, eval, test
+        self.train_config = parse_config(
+            config=self.train_config, config_class=TrainConfig
+        )
+        self.dataset_config = parse_config(
+            config=self.dataset_config, config_class=DatasetConfig
+        )
+        self.dataloader_config = parse_config(
+            config=self.dataloader_config, config_class=DataLoaderConfig
+        )
+        logger.success("Configuratons loaded.")
+        logger.info("Initialising logger...")
+        try:
+            LoggedProcess.__init__(self, self.dataset_config.log_output_dir)  # type: ignore
+            logger.success("Logger initialised.")
+        except KeyError:
+            logger.error("Unable to find variable log_output_dir in configuration.")
 
         logger.success(f"{self.__class__.__name__} initialized successfully")
 
-    @logger.catch(message="Unable to parse configs.", reraise=True)
-    def _parse_config(self, config: Union[object, str, dict], config_class: type):
-        if isinstance(config, config_class):
-            return EasyDict(config)
-        elif isinstance(config, dict):
-            return EasyDict(config_class(**config))
-        elif isinstance(config, str):
-            # It's a file path
-            if os.path.exists(config):
-                with open(config, "r") as f:
-                    config_dict = yaml.safe_load(f)
-                return EasyDict(config_class(**config_dict))
-            else:
-                # It's a YAML string
-                config_dict = yaml.safe_load(config)
-                return EasyDict(config_class(**config_dict))
-        else:
-            logger.error(f"Invalid config type: {type(config)}")
-
     @logger.catch(message="Unable to initialise tokenizer.", reraise=True)
-    def _initialize_tokenizer(self):
-        if self.tokenizer is not None:
-            self._tokenizer = self.tokenizer
-        else:
+    def _initalise_tokenizer(self):
+        if self.tokenizer is None:
             logger.info(
-                f"Loading tokenizer from {self._model_config.model_name_or_path}"
+                f"Loading tokenizer from {self.model_config.model_name_or_path}"  # type: ignore
             )
-            self._tokenizer = AutoTokenizer.from_pretrained(
-                self._model_config.model_name_or_path
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_config.model_name_or_path  # type: ignore
             )
+        logger.success("Tokenizer initialised.")
 
-        logger.success("Tokenizer initialized successfully")
 
-    def _initialize_dataset(self):
-        dataset_class = self._get_dataset_class(self._dataset_config.data_type)
-
-        self._dataset = dataset_class(
-            tokenizer=self._tokenizer,
-            source_lines_path=self._dataset_config.source_lines_path,
-            target_lines_path=self._dataset_config.target_lines_path,
-            alignments_path=self._dataset_config.alignments_path,
-            limit=self._dataset_config.limit,
-            one_indexed=self._dataset_config.one_indexed,
-            context_sep=self._dataset_config.context_sep,
-            do_inference=self._dataset_config.do_inference,
-            log_output_dir=self._dataset_config.log_output_dir,
-            save=self._dataset_config.save,
-        )
-
-        logger.success("Dataset initialized successfully")
-
-    @logger.catch(message="Unable to get dataset class.", reraise=True)
-    def _get_dataset_class(self, data_type: str):
-        if data_type.lower() == "silver":
-            return AlignmentDatasetSilver
-        elif data_type.lower() == "gold":
-            return AlignmentDatasetGold
-        else:
-            raise ValueError(
-                f"Invalid dataset type: {data_type}. Must be 'silver' or 'gold'"
-            )
-
-    def run_training(self):
-        logger.info("Starting training pipeline...")
-
-        # Create trainer
-        trainer = BinaryAlignTrainer(
-            tokenizer=self._tokenizer,
-            model_config=self._model_config,
-            train_config=self._train_config,
-            dataset_config=self._dataset_config,
-            dataloader_config=self._dataloader_config,
-            train_data=self._train_dataloader,
-            eval_data=self._eval_dataloader,
-        )
-
-        # Run training
-        trainer.run()
-
-        logger.success("Training pipeline completed successfully")
-        return trainer
-
-    def run(self):
-        logger.info("Starting complete alignment generation pipeline...")
-        # Run training
-        trainer = self.run_training()
-
-        # Run evaluation (if needed)
-        # inference_dataloader = self.run_evaluation()
-
-        logger.success("Complete pipeline executed successfully")
-        return trainer
+# TODO: split into train, eval, test for training/testing

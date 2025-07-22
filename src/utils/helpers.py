@@ -1,7 +1,10 @@
+import os
 import random
-from typing import Optional
+from typing import Any, Optional, Union
 
 import torch
+import yaml
+from easydict import EasyDict
 from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -127,3 +130,25 @@ def parse_single_alignment(string, one_indexed=False, reverse: bool = False):
         return b, a
     else:
         return a, b
+
+
+def parse_config(
+    config: Union[object, str, dict[str, Any]], config_class: type
+) -> EasyDict:
+    if isinstance(config, config_class):
+        return EasyDict(config)
+    elif isinstance(config, dict):
+        return EasyDict(config_class(**config))
+    elif isinstance(config, str):
+        # Check if config is a file path
+        if os.path.exists(config):
+            with open(config, "r") as f:
+                config_dict = yaml.safe_load(f)
+            return EasyDict(config_class(**config_dict))
+        else:
+            # config is a YAML string
+            config_dict = yaml.safe_load(config)
+            return EasyDict(config_class(**config_dict))
+    else:
+        # For any other type, return empty EasyDict
+        return EasyDict({})

@@ -50,6 +50,8 @@ class BaseDataset(ABC):
         )
         self.alignments = self.read_data(path=self.alignments_path, limit=self.limit)
 
+        logger.success(f"{self.__class__.__name__} initialized successfully")
+
         logger.debug("Preparing dataset...")
         self.run()
 

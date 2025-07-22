@@ -30,6 +30,8 @@ class ZHTokenizer:
                 )
             logger.warning("Tokenizer has not been initialised!")
 
+        logger.success(f"{self.__class__.__name__} initialized successfully")
+
     def __call__(
         self, lines: Union[list[str], str], return_as_single_strings: bool = True
     ) -> Union[list[list[str]], list[str], str]:
