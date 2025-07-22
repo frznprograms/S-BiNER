@@ -36,7 +36,6 @@ class BinaryAlignTrainer(PipelineStep):
     eval_data: Optional[Union[AlignmentDatasetGold, AlignmentDatasetSilver]] = None
     device_type: str = "auto"
     seed_num: int = 42
-    priority_metric_for_optimisation: Optional[str] = "aer"
 
     def __post_init__(self):
         logger.debug("Initialising BinaryAlignTrainer...")

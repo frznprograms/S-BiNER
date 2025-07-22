@@ -1,8 +1,6 @@
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Optional
 
-import torch
-from easydict import EasyDict
 from loguru import logger
 from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -12,7 +10,7 @@ from src.configs.logger_config import LoggedProcess
 from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
 from src.datasets.datasets_silver import AlignmentDatasetSilver
-from src.utils.helpers import parse_config
+from src.utils.helpers import collate_fn_span, parse_config
 
 
 @dataclass
@@ -20,33 +18,14 @@ class AlignmentGenerationPipeline(LoggedProcess):
     tokenizer: Optional[PreTrainedTokenizer]
     task: str = "all"
     seed: int = 42
-    train_ratio: float = 0.7
-    val_ratio: float = 0.1
-    test_ratio: float = 0.2
-    model_config: Union[ModelConfig, str, dict]  # type: ignore
-    train_config: Union[TrainConfig, str, dict]  # type: ignore
-    dataset_config: Union[DatasetConfig, str, dict]  # type: ignore
-    dataloader_config: Union[DataLoaderConfig, str, dict]  # type: ignore
-
-    train_data: list[dict[str, torch.Tensor]] = field(default_factory=list, init=False)
-    val_data: list[dict[str, torch.Tensor]] = field(default_factory=list, init=False)
-    test_data: list[dict[str, torch.Tensor]] = field(default_factory=list, init=False)
+    train_dataset_config: Optional[DatasetConfig] = None
+    val_dataset_config: Optional[DatasetConfig] = None
+    test_dataset_config: Optional[DatasetConfig] = None
+    train_data: Optional[AlignmentDatasetSilver] = field(init=False)
+    val_data: Optional[AlignmentDatasetSilver] = field(init=False)
+    test_data: Optional[AlignmentDatasetSilver] = field(init=False)
 
     def __post_init__(self):
-        logger.info("Loading configurations...")
-        self.model_config: EasyDict = parse_config(
-            config=self.model_config, config_class=ModelConfig
-        )
-        self.train_config: EasyDict = parse_config(
-            config=self.train_config, config_class=TrainConfig
-        )
-        self.dataset_config: EasyDict = parse_config(
-            config=self.dataset_config, config_class=DatasetConfig
-        )
-        self.dataloader_config: EasyDict = parse_config(
-            config=self.dataloader_config, config_class=DataLoaderConfig
-        )
-        logger.success("Configuratons loaded.")
         logger.info("Initialising logger...")
         try:
             LoggedProcess.__init__(self, self.dataset_config.log_output_dir)  # type: ignore
@@ -62,11 +41,34 @@ class AlignmentGenerationPipeline(LoggedProcess):
     @logger.catch(message="Unable to complete pipeline execution.", reraise=True)
     def run(self):
         if self.task == "all" or self.task == "data":
-            train_data, val_data, test_data = self._prepare_datasets()
+            train_dataset = (
+                AlignmentDatasetSilver(
+                    tokenizer=self.tokenizer,
+                    **self.train_dataset_config,  # type: ignore
+                )
+                if self.train_dataset_config
+                else None
+            )
+            val_dataset = (
+                AlignmentDatasetSilver(
+                    tokenizer=self.tokenizer,
+                    **self.val_dataset_config,  # type: ignore
+                )
+                if self.val_dataset_config
+                else None
+            )
+            test_dataset = (
+                AlignmentDatasetSilver(
+                    tokenizer=self.tokenizer,
+                    **self.test_dataset_config,  # type: ignore
+                )
+                if self.test_dataset_config
+                else None
+            )
             self.train_data, self.val_data, self.test_data = (
-                train_data,
-                val_data,
-                test_data,
+                train_dataset,
+                val_dataset,
+                test_dataset,
             )
             logger.info(
                 f"{self.__class__.__name__} train_data, val_data and test_data have been updated."
@@ -75,26 +77,6 @@ class AlignmentGenerationPipeline(LoggedProcess):
             self._train()
         if self.task == "all" or self.task == "predict":
             self._predict()
-
-    @logger.catch(message="Unable to prepare datasets.", reraise=True)
-    def _prepare_datasets(self):
-        logger.info("Preparing dataset...")
-        ads = AlignmentDatasetSilver(tokenizer=self.tokenizer, **self.dataset_config)  # type: ignore
-        data = ads.data
-        logger.success("Dataset prepared.")
-        # symmetrization is already done by the model, so actually we do not need to have reverse data
-        # but the option is always there in AlignmentDatasetSilver, if anyone wants it
-        logger.info("Splitting data into train-val-test sets...")
-
-        train_idx = int(self.train_ratio * len(data))
-        val_idx = int((self.train_ratio + self.val_ratio) * len(data))
-        train_data = data[:train_idx]
-        val_data = data[train_idx:val_idx]
-        test_data = data[val_idx:]
-
-        logger.success("Data split into train-val-test sets.")
-
-        return train_data, val_data, test_data
 
     @logger.catch(message="Unable to complete model training.", reraise=True)
     def _train(self):
@@ -114,3 +96,37 @@ class AlignmentGenerationPipeline(LoggedProcess):
                 self.model_config.model_name_or_path  # type: ignore
             )
         logger.success("Tokenizer initialised.")
+
+
+if __name__ == "__main__":
+    model_config = parse_config(
+        ModelConfig(model_name_or_path="FacebookAI/roberta-base"),
+        config_class=ModelConfig,
+    )
+    train_config = parse_config(
+        TrainConfig(experiment_name="trainer-test", mixed_precision="no"),
+        config_class=TrainConfig,
+    )
+    train_dataset_config = parse_config(
+        DatasetConfig(
+            source_lines_path="data/cleaned_data/train.src",
+            target_lines_path="data/cleaned_data/train.tgt",
+            alignments_path="data/cleaned_data/train.talp",
+            limit=50,
+        ),
+        config_class=DatasetConfig,
+    )
+    eval_dataset_config = parse_config(
+        DatasetConfig(
+            source_lines_path="data/cleaned_data/dev.src",
+            target_lines_path="data/cleaned_data/dev.tgt",
+            alignments_path="data/cleaned_data/dev.talp",
+            limit=10,
+            do_inference=True,
+        ),
+        config_class=DatasetConfig,
+    )
+    dataloader_config = DataLoaderConfig(collate_fn=collate_fn_span)
+    tok = AutoTokenizer.from_pretrained(model_config.model_name_or_path)  # type: ignore
+    train_data = AlignmentDatasetSilver(tokenizer=tok, **train_dataset_config)
+    eval_data = AlignmentDatasetSilver(tokenizer=tok, **eval_dataset_config)
