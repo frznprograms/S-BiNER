@@ -20,6 +20,7 @@ class DatasetConfig(ABC):
     max_sentence_length: int = 512
     save: bool = False
     debug_mode: bool = False
+    save_dir: str = "output"
 
 
 @dataclass

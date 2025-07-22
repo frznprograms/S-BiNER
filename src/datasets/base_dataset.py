@@ -32,6 +32,7 @@ class BaseDataset(ABC):
     max_sentence_length: int = 512
     save: bool = False
     debug_mode: bool = False
+    save_dir: str = "output"
     sure: list = field(default_factory=list, init=False)
     data: list = field(default_factory=list, init=False)
     reverse_data: list = field(default_factory=list, init=False)
@@ -61,8 +62,12 @@ class BaseDataset(ABC):
             self.data = self.data + self.reverse_data
 
         if self.save:
-            self.save_data(self.data, "data/data.pt")
-            self.save_data(self.reverse_data, "data/reverse_data.pt")
+            logger.info("Saving data...")
+            self.save_data(self.data, f"{self.save_dir}/data.pt")
+            self.save_data(self.reverse_data, f"{self.save_dir}/reverse_data.pt")
+            logger.success(
+                f"Saved data to {self.save_dir} with default name(s). Please change the names in case of clash. "
+            )
 
     def __len__(self):
         return len(self.data)
@@ -278,9 +283,8 @@ class BaseDataset(ABC):
     @logger.catch(message="Unable to read data", reraise=True)
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
         data = delist_the_list(pd.read_csv(path, sep="\t").values.tolist())
-        if limit is None:
-            limit = len(data)
-        data = data[:limit]
+        if limit is not None:
+            data = data[:limit]
 
         return data
 

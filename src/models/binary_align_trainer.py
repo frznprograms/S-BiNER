@@ -399,6 +399,7 @@ class BinaryAlignTrainer(PipelineStep):
                     pbar.write(f"Failed to remove checkpoint {dir_name}: {e}")
 
 
+# TODO: add the ability to load from last checkpoint in the event of training failure, along with the data that has yet to be seen by the model
 # TODO: consider wandb integration
 # TODO (future): dockerize?
 
