@@ -54,38 +54,43 @@ class AlignmentGenerationPipeline(LoggedProcess):
 
     @logger.catch(message="Unable to complete pipeline execution.", reraise=True)
     def run_data_preparation(self):
+        train_dataset, val_dataset, test_dataset = None, None, None
         if self.task == "all" or self.task == "data":
-            train_dataset = (
-                AlignmentDatasetSilver(
-                    tokenizer=self.tokenizer,
-                    **self.train_dataset_config,  # type: ignore
+            if self.train_dataset_config:
+                train_dataset = (
+                    AlignmentDatasetSilver(
+                        tokenizer=self.tokenizer,
+                        **self.train_dataset_config,  # type: ignore
+                    )
+                    if self.train_dataset_config
+                    else None
                 )
-                if self.train_dataset_config
-                else None
-            )
-            val_dataset = (
-                AlignmentDatasetSilver(
-                    tokenizer=self.tokenizer,
-                    **self.val_dataset_config,  # type: ignore
+            if self.val_dataset_config:
+                val_dataset = (
+                    AlignmentDatasetSilver(
+                        tokenizer=self.tokenizer,
+                        **self.val_dataset_config,  # type: ignore
+                    )
+                    if self.val_dataset_config
+                    else None
                 )
-                if self.val_dataset_config
-                else None
-            )
-            test_dataset = (
-                AlignmentDatasetSilver(
-                    tokenizer=self.tokenizer,
-                    **self.test_dataset_config,  # type: ignore
+            if self.test_dataset_config:
+                test_dataset = (
+                    AlignmentDatasetSilver(
+                        tokenizer=self.tokenizer,
+                        **self.test_dataset_config,  # type: ignore
+                    )
+                    if self.test_dataset_config
+                    else None
                 )
-                if self.test_dataset_config
-                else None
-            )
             self.train_data, self.val_data, self.test_data = (
                 train_dataset,
                 val_dataset,
                 test_dataset,
             )
             logger.info(
-                f"{self.__class__.__name__} train_data, val_data and test_data have been updated."
+                f"{self.__class__.__name__} train_data, val_data and test_data have been updated.\
+                Please inspect these variables to ensure they have been prepared properly."
             )
 
     @logger.catch(message="Unable to complete model training.", reraise=True)
@@ -176,7 +181,7 @@ if __name__ == "__main__":
         ),
         config_class=DatasetConfig,
     )
-    eval_dataset_config = parse_config(
+    val_dataset_config = parse_config(
         DatasetConfig(
             source_lines_path="data/cleaned_data/dev.src",
             target_lines_path="data/cleaned_data/dev.tgt",
@@ -189,4 +194,4 @@ if __name__ == "__main__":
     dataloader_config = DataLoaderConfig(collate_fn=collate_fn_span)
     tok = AutoTokenizer.from_pretrained(model_config.model_name_or_path)  # type: ignore
     train_data = AlignmentDatasetSilver(tokenizer=tok, **train_dataset_config)
-    eval_data = AlignmentDatasetSilver(tokenizer=tok, **eval_dataset_config)
+    val_data = AlignmentDatasetSilver(tokenizer=tok, **val_dataset_config)
