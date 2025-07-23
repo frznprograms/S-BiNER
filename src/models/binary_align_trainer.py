@@ -123,9 +123,6 @@ class BinaryAlignTrainer:
 
         for epoch in range(self.train_config.num_train_epochs):
             for batch in self.train_dataloader:
-                # Remove manual device transfer - Accelerator handles this
-                # batch = {k: v.to(training_device) for k, v in batch.items()}
-
                 loss = self.model(**batch).loss
 
                 self.accelerator.backward(loss)
