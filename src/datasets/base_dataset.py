@@ -66,7 +66,8 @@ class BaseDataset(ABC):
             self.save_data(self.data, f"{self.save_dir}/data.pt")
             self.save_data(self.reverse_data, f"{self.save_dir}/reverse_data.pt")
             logger.success(
-                f"Saved data to {self.save_dir} with default name(s). Please change the names in case of clash. "
+                f"Saved data to {self.save_dir} with default name(s). \
+                Please change the names in case of clash. "
             )
 
     def __len__(self):

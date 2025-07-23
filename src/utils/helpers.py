@@ -3,6 +3,7 @@ import random
 from typing import Any, Optional, Union
 
 import torch
+import wandb
 import yaml
 from easydict import EasyDict
 from loguru import logger
@@ -52,8 +53,10 @@ def set_device(device_type: str = "auto") -> str:
     return device
 
 
+@logger.catch(message="Unable to set seed for this run/experiment.", reraise=True)
 def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> int:
     if seed_num is None:
+        logger.warning("A seed was not detected. Setting seed to 42.")
         seed_num = 42
     torch.manual_seed(seed_num)
     random.seed(seed_num)
@@ -152,3 +155,10 @@ def parse_config(
     else:
         # For any other type, return empty EasyDict
         return EasyDict({})
+
+def init_wandb_tracker():
+    wandb.login()
+    # wandb.init(project=self.project_name)
+
+def init_tensorboard_tracker():
+    raise NotImplementedError

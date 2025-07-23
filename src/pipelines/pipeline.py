@@ -10,20 +10,24 @@ from src.configs.logger_config import LoggedProcess
 from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
 from src.datasets.datasets_silver import AlignmentDatasetSilver
-from src.utils.helpers import collate_fn_span, parse_config
+from src.utils.helpers import collate_fn_span, parse_config, set_device, set_seeds
+from src.models.binary_align_trainer import BinaryAlignTrainer
 
 
 @dataclass
 class AlignmentGenerationPipeline(LoggedProcess):
     tokenizer: Optional[PreTrainedTokenizer]
     task: str = "all"
-    seed: int = 42
+    device: str = "auto"
+    is_model_deterministic: bool = True
+    seed: Optional[int] = 42
     train_dataset_config: Optional[DatasetConfig] = None
     val_dataset_config: Optional[DatasetConfig] = None
     test_dataset_config: Optional[DatasetConfig] = None
     train_data: Optional[AlignmentDatasetSilver] = field(init=False)
     val_data: Optional[AlignmentDatasetSilver] = field(init=False)
     test_data: Optional[AlignmentDatasetSilver] = field(init=False)
+    trainer: Optional[BinaryAlignTrainer] = field(init=False)
 
     def __post_init__(self):
         logger.info("Initialising logger...")
@@ -35,11 +39,19 @@ class AlignmentGenerationPipeline(LoggedProcess):
             logger.warning("Proceeding with a logger without customization.")
 
         self._initalise_tokenizer()
+        self.device = set_device(device_type=self.device)
+        self.seed = set_seeds(
+            seed_num=self.seed, deterministic=self.is_model_deterministic
+        )
 
         logger.success(f"{self.__class__.__name__} initialized successfully")
 
+    @logger.catch(message="Unable to complete all-task execution", reraise=True)
+    def run_all(self):
+        raise NotImplementedError
+
     @logger.catch(message="Unable to complete pipeline execution.", reraise=True)
-    def run(self):
+    def run_data_preparation(self):
         if self.task == "all" or self.task == "data":
             train_dataset = (
                 AlignmentDatasetSilver(
@@ -73,18 +85,61 @@ class AlignmentGenerationPipeline(LoggedProcess):
             logger.info(
                 f"{self.__class__.__name__} train_data, val_data and test_data have been updated."
             )
-        if self.task == "all" or self.task == "train":
-            self._train()
-        if self.task == "all" or self.task == "predict":
-            self._predict()
 
     @logger.catch(message="Unable to complete model training.", reraise=True)
-    def _train(self):
-        raise NotImplementedError
+    def run_training(
+        self,
+        model_config: ModelConfig,
+        train_config: TrainConfig,
+    ):
+        # validation checks
+        self._validate_training_requirements()
+        self.trainer = BinaryAlignTrainer(
+            tokenizer=self.tokenizer,  # type: ignore
+            model_config=model_config,
+            train_config=train_config,
+            dataset_config=self.train_dataset_config,  # type: ignore
+            dataloader_config=dataloader_config,
+            train_data=self.train_data,  # type: ignore
+            eval_data=self.val_data,
+            device_type=self.device,
+            seed_num=self.seed,  # type: ignore
+        )
 
     @logger.catch(message="Unable to complete model prediction.", reraise=True)
-    def _predict(self):
+    def run_prediction(self):
+        if not self.task == "all" or not self.task == "predict":
+            logger.error(f"{self.__class__.__name__} not configured for prediction.")
+
         raise NotImplementedError
+
+    @logger.catch(message="Unable to validate training requirements.", reraise=True)
+    def _validate_training_requirements(self) -> bool:
+        # returns boolean to allow developer to debug easily if needed
+        if not self.task == "all" or not self.task == "train":
+            logger.error(f"{self.__class__.__name__} not configured for training.")
+            return False
+
+        if self.train_data is None or self.train_dataset_config is None:
+            logger.error(
+                "Unable to train without training data or a train_dataset_config. \
+                Please load some training data in the form of an AlignmentDatasetSilver class \
+                to continue with training. To save time and effort, you should prepare the \
+                AlignmentDatasetSilver instance with save=True to prevent uncessary \
+                re-preparation of datasets."
+            )
+            return False
+
+        if self.tokenizer is None:
+            logger.error("Unable to train without a valid tokenizer.")
+            return False
+
+        if self.trainer is not None:
+            logger.warning(
+                "A BinaryAlignTrainer already exists for this run. It will be used for training."
+            )
+
+        return True
 
     @logger.catch(message="Unable to initialise tokenizer.", reraise=True)
     def _initalise_tokenizer(self):
@@ -97,6 +152,8 @@ class AlignmentGenerationPipeline(LoggedProcess):
             )
         logger.success("Tokenizer initialised.")
 
+
+# TODO: remove the run() method as saving all states upon init will be very inefficient. Just have 3 different methods and run_all(), which will take as many args as it requires to execute the whole pipeline. Better than having to save a lot of parameters which is memory-inefficient.
 
 if __name__ == "__main__":
     model_config = parse_config(

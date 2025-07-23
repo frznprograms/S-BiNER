@@ -1,8 +1,9 @@
+import os
+import shutil
 from dataclasses import dataclass
 from functools import partial
-import shutil
+from pathlib import Path
 from typing import Optional, Union
-import os
 
 import torch
 from accelerate import Accelerator
@@ -21,12 +22,11 @@ from src.datasets.datasets_silver import AlignmentDatasetSilver
 from src.models.binary_align_eval import BinaryAlignEvaluator
 from src.models.binary_align_factory import BinaryTokenClassificationFactory
 from src.utils.decorators import timed_execution
-from src.utils.helpers import collate_fn_span, set_device, set_seeds
-from src.utils.pipeline_step import PipelineStep
+from src.utils.helpers import collate_fn_span, set_device, set_seeds, init_wandb_tracker
 
 
 @dataclass
-class BinaryAlignTrainer(PipelineStep):
+class BinaryAlignTrainer:
     tokenizer: PreTrainedTokenizer
     model_config: ModelConfig
     train_config: TrainConfig
@@ -36,6 +36,9 @@ class BinaryAlignTrainer(PipelineStep):
     eval_data: Optional[Union[AlignmentDatasetGold, AlignmentDatasetSilver]] = None
     device_type: str = "auto"
     seed_num: int = 42
+    checkpoint_dir: str = "checkpoints"
+    debug_mode: bool = False
+    project_name: str = "binary-align-for-zh-ner"
 
     def __post_init__(self):
         logger.debug("Initialising BinaryAlignTrainer...")
@@ -53,7 +56,7 @@ class BinaryAlignTrainer(PipelineStep):
 
         # setup wandb account if any
         if self.train_config.log_with == "wanb":
-            self._init_wandb_tracker()
+            init_wandb_tracker()
 
         logger.debug("Loaded configuration objects.")
 
@@ -344,7 +347,9 @@ class BinaryAlignTrainer(PipelineStep):
         if should_save_checkpoint and self.accelerator.is_main_process:
             try:
                 # Create the specific checkpoint directory
-                checkpoint_path = self.checkpoint_dir / f"checkpoint-{global_step}"
+                checkpoint_path = (
+                    Path(self.checkpoint_dir) / f"checkpoint-{global_step}"
+                )
                 checkpoint_path.mkdir(parents=True, exist_ok=True)
 
                 # Save the model state to the specific checkpoint directory
@@ -369,7 +374,7 @@ class BinaryAlignTrainer(PipelineStep):
         """Needs to take pbar as an argument so that the print statements are
         nicer to read."""
         checkpoint_dirs = []
-        for item in self.checkpoint_dir.iterdir():
+        for item in Path(self.checkpoint_dir).iterdir():
             if (
                 item.is_dir()
                 and item.name.startswith("checkpoint-")

@@ -9,15 +9,15 @@ from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
 from src.datasets.base_dataset import BaseDataset
 from src.utils.helpers import collate_fn_span, parse_single_alignment
-from src.utils.pipeline_step import PipelineStep
 
 
 @dataclass
-class AlignmentDatasetSilver(BaseDataset, PipelineStep):
+class AlignmentDatasetSilver(BaseDataset):
     def __post_init__(self):
         super().__post_init__()
         logger.success(
-            f"{self.__class__.__name__} initialized with type inference set to {self.do_inference}."
+            f"{self.__class__.__name__} initialized with type \
+            inference set to {self.do_inference}."
         )
 
     def _prepare_labels(

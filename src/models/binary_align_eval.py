@@ -13,7 +13,6 @@ from src.models.binary_align_models import (
     RobertaModelForBinaryTokenClassification,
     XLMRobertaModelForBinaryTokenClassification,
 )
-from src.utils.pipeline_step import PipelineStep
 
 AGG_FN = {
     "mean": np.mean,
@@ -25,7 +24,11 @@ AGG_FN = {
 
 
 @dataclass
-class BinaryAlignEvaluator(PipelineStep):
+class BinaryAlignEvaluator:
+    checkpoint_dir: str = "checkpoints"
+    debug_mode: bool = False
+    project_name: str = "binary-align-for-zh-ner"
+
     def run(
         self,
         dataloader: DataLoader,
