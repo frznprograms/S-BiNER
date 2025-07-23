@@ -47,8 +47,10 @@ class AlignmentGenerationPipeline(LoggedProcess):
         logger.success(f"{self.__class__.__name__} initialized successfully")
 
     @logger.catch(message="Unable to complete all-task execution", reraise=True)
-    def run_all(self):
-        raise NotImplementedError
+    def run_all(self, model_config: ModelConfig, train_config: TrainConfig):
+        self.run_data_preparation()
+        self.run_training(model_config=model_config, train_config=train_config)
+        self.run_prediction()
 
     @logger.catch(message="Unable to complete pipeline execution.", reraise=True)
     def run_data_preparation(self):
@@ -106,6 +108,9 @@ class AlignmentGenerationPipeline(LoggedProcess):
             seed_num=self.seed,  # type: ignore
         )
 
+        # update the instance model
+        self.trained_model = self.trainer.model
+
     @logger.catch(message="Unable to complete model prediction.", reraise=True)
     def run_prediction(self):
         if not self.task == "all" or not self.task == "predict":
@@ -134,9 +139,9 @@ class AlignmentGenerationPipeline(LoggedProcess):
             logger.error("Unable to train without a valid tokenizer.")
             return False
 
-        if self.trainer is not None:
+        if self.trained_model is not None:
             logger.warning(
-                "A BinaryAlignTrainer already exists for this run. It will be used for training."
+                "A trained model already exists for this run. It will be replaced after training."
             )
 
         return True
@@ -152,8 +157,6 @@ class AlignmentGenerationPipeline(LoggedProcess):
             )
         logger.success("Tokenizer initialised.")
 
-
-# TODO: remove the run() method as saving all states upon init will be very inefficient. Just have 3 different methods and run_all(), which will take as many args as it requires to execute the whole pipeline. Better than having to save a lot of parameters which is memory-inefficient.
 
 if __name__ == "__main__":
     model_config = parse_config(
