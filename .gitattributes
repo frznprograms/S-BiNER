@@ -1,0 +1,2 @@
+*.bib text eol=lf
+*.bib diff=tex

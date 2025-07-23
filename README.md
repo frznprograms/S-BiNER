@@ -1,15 +1,15 @@
 Hi there, welcome to
-## S-BiNER ##
+# S-BiNER #
 
 ### Description
 This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on Chinese.
 
-**Disclaimer**: This model is experimental and not designed for production-grade tasks.
+**Disclaimer**: This framework is experimental and not designed for production-grade tasks. I am NOT selling this product for profit. In the spirit of collaboration and community-supported improvements, I wish to keep this repo free-to-use and open-source.
 
 This methodology comes with the added twist of simple annotation projection for Named Entity Recognition (NER) tasks. 
 
 ### Author(s)
-Shane Bharathan (shanevbh@gmail.com/shane_vbharathan@aiip.sg)
+Shane Bharathan
 
 ### Instructions for usage
 First, install the `uv` package management software for Python: https://docs.astral.sh/uv/getting-started/installation/.
@@ -51,6 +51,8 @@ To run inference using **S-BiNER**, run the following terminal command:
 I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo. 
 
 I would also like to thank the good folks at Natural Semantics (Qingdao) Technology Co., Ltd. the main project owner of Hanlp, and Shanghai Linyuan Company for allowing the use of their tokenizer and models for research and teaching purposes. 
+
+**Please include these citations if this work is reproduced or repurposed in any way.**
 
 @article{latouche2024binaryalign,
   title={BinaryAlign: Word Alignment as Binary Sequence Labeling},
