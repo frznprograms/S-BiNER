@@ -23,7 +23,7 @@ class AlignmentPairDataset(Dataset):
     alignments_path: str
     limit: Optional[int] = None
     one_indexed: bool = False
-    context_sep: Optional[str] = " <S> "
+    context_sep: Optional[str] = " <SEP> "
     do_inference: bool = False
     log_output_dir: str = "logs"
     max_sentence_length: int = 512
@@ -36,7 +36,6 @@ class AlignmentPairDataset(Dataset):
         default_factory=list, init=False
     )
 
-    # TODO: add context sep to tokenizer
     # TODO: find out if tensor types are correct -> does it all become FloatTensor anyway?
 
     def __post_init__(self):
@@ -66,7 +65,7 @@ class AlignmentPairDataset(Dataset):
         source_mask: torch.BoolTensor = item.source_mask  # type: ignore
         target_mask: torch.BoolTensor = item.target_mask  # type: ignore
         attention_mask: torch.IntTensor = item.attention_mask  # type: ignore
-        label_matrix: torch.IntTensor = item.label_matrix  # type: ignore
+        label_matrix: torch.FloatTensor = item.label_matrix  # type: ignore
 
         return {
             "source_sentence": source_sentence,
@@ -82,11 +81,12 @@ class AlignmentPairDataset(Dataset):
     @timed_execution
     @logger.catch(message="Unable to prepare dataset", reraise=True)
     def prepare_data(self, index: int):
+        # note: these sentences have already been split into words
         source_sentence: str = self.source_sentences[index]
         target_sentence: str = self.target_sentences[index]
         alignments: str = self.alignments[index]
 
-        # TODO: find out if this returns the word ids immediately
+        # returns dict[str, torch.Tensor] directly
         encoded = self.tokenizer(
             source_sentence,
             target_sentence,
@@ -98,11 +98,68 @@ class AlignmentPairDataset(Dataset):
             return_token_type_ids=True,
         )
 
-        input_ids = encoded["input_ids"].squeeze()
-        attention_mask = encoded["attention_mask"].squeeze()
+        source_len = len(source_sentence.split())
+        target_len = len(target_sentence.split())
+        label_matrix = self._prepare_label_matrix(
+            dim1=source_len, dim2=target_len, sentence_alignments=alignments
+        )
+
+        if self.debug_mode:
+            print(f"Encoding shape: {encoded.shape}")
+            print("Encodings:")
+            print(encoded)
+
+        # prepare input ids and attention mask
+        input_ids = encoded["input_ids"].squeeze()  # type: ignore
+        attention_mask = encoded["attention_mask"].squeeze()  # type: ignore
         token_type_ids = encoded.get("token_type_ids", None)
         if token_type_ids is not None:
             token_type_ids = token_type_ids.squeeze()
+
+        source_mask = (
+            (token_type_ids == 0)
+            if token_type_ids is not None
+            else self._infer_mask(source_sentence, encoded)
+        )
+        target_mask = (
+            (token_type_ids == 1)
+            if token_type_ids is not None
+            else self._infer_mask(target_sentence, encoded)
+        )
+
+        # TODO: bpe2word encoding so we can map tokens back to the origin word
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "src_mask": source_mask,
+            "tgt_mask": target_mask,
+            "labels": label_matrix,
+        }
+
+    @logger.catch(message="Unable to prepare labels", reraise=True)
+    def _prepare_label_matrix(self, dim1: int, dim2: int, sentence_alignments: str):
+        label_matrix = torch.zeros((dim1, dim2), dtype=torch.float)
+        for source_i, target_j in sentence_alignments.split():
+            if int(source_i) < dim1 and int(target_j) < dim2:
+                label_matrix[int(source_i), int(target_j)] = 1.0
+
+    @logger.catch(message="Unable to infer mask", reraise=True)
+    def _infer_mask(self, sentence, encoded):
+        # TODO: consider edge cases: what happens if tokenizer does not have a separator id?
+        # TODO: what happens in xlm case where two separators are used e.g. </s></s>
+        # fallback method: split using sep token if no token_type_ids
+        sep_token_id = self.tokenizer.sep_token_id
+        input_ids = encoded["input_ids"].squeeze().tolist()
+        sep_indices = [i for i, t in enumerate(input_ids) if t == sep_token_id]
+        mask = torch.zeros(len(input_ids), dtype=torch.bool)
+        # get source tokens
+        if len(sep_indices) >= 2:
+            start = 1
+            end = sep_indices[0]
+            mask[start:end] = True
+
+        return mask
 
     @logger.catch(message="Unable to read data", reraise=True)
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
