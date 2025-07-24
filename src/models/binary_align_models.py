@@ -183,3 +183,4 @@ class XLMRobertaModelForBinaryTokenClassification(
 # -> num_labels, classifier_dropout, hidden_dropout_prob, hidden_size etc.
 # TODO: document shape tracking as tensors move through the model
 # TODO: how to add symmetrisation to the model to avoid data complexity?
+# TODO: what other algorithms other than cosine similarity can we use to identify if embeddings are similar? (more of a bonus, should focus on completing the ner part first)
