@@ -1,4 +1,5 @@
 import os
+import tracemalloc
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
@@ -7,6 +8,7 @@ import torch
 from easydict import EasyDict
 from loguru import logger
 from torch.utils.data import Dataset
+from tqdm.auto import tqdm
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 
@@ -79,11 +81,49 @@ class AlignmentPairDataset(Dataset):
 
     @timed_execution
     @logger.catch(message="Unable to prepare dataset", reraise=True)
-    def prepare_data(self, index: int):
+    def run(self, track_memory_usage: bool = True):
+        pbar = tqdm(total=len(self.source_sentences))
+        if track_memory_usage:
+            tracemalloc.start()
+
+        for i in range(len(self.source_sentences)):
+            try:
+                entry = self.prepare_data(index=i, reverse=False)
+                reversed_entry = self.prepare_data(index=i, reverse=True)
+                self.data.append(entry)
+                self.reverse_data.append(reversed_entry)
+            except Exception:
+                pbar.write(f"Unable to complete data preparation at index {i}")
+            pbar.update(1)
+
+        # override to prevent excessive memory usage
+        if self.do_inference:
+            self.data = self.data + self.reverse_data
+
+        if track_memory_usage:
+            current, peak = tracemalloc.get_traced_memory()
+            pbar.write(
+                f"Current usage: {current / 1e6:.2f} MB | Peak usage: {peak / 1e6:.2f} MB"
+            )
+
+        logger.success(
+            f"Prepared dataset for tasking inference set to {self.do_inference}"
+        )
+
+    @logger.catch(message="Unable to prepare dataset", reraise=True)
+    def prepare_data(self, index: int, reverse: bool = False):
         # note: these sentences have already been split into words
         source_sentence: str = self.source_sentences[index]
         target_sentence: str = self.target_sentences[index]
         alignments: str = self.alignments[index]
+
+        if reverse:
+            source_sentence, target_sentence = target_sentence, source_sentence
+            # need to reverse the alignments as well
+            reverse_alignments = self._prepare_alignments(alignments, reverse=True)
+            prepped_alignments = reverse_alignments
+        else:
+            prepped_alignments = self._prepare_alignments(alignments, reverse=False)
 
         if self.tokenizer.sep_token_id is None:
             self.tokenizer.add_special_tokens({"sep_token": self.context_sep})
@@ -105,7 +145,7 @@ class AlignmentPairDataset(Dataset):
         source_len = len(source_sentence.split())
         target_len = len(target_sentence.split())
         label_matrix = self._prepare_label_matrix(
-            dim1=source_len, dim2=target_len, sentence_alignments=alignments
+            dim1=source_len, dim2=target_len, sentence_alignments=prepped_alignments
         )
 
         source_mask = (
@@ -140,19 +180,36 @@ class AlignmentPairDataset(Dataset):
             "word_to_token_mapping": combined_token_to_word_mapping,
         }
 
+    @logger.catch(message="Unable to prepare reverse alignments", reraise=True)
+    def _prepare_alignments(
+        self, alignments: str, reverse: bool = False
+    ) -> list[tuple[int, int]]:
+        alignments_list = alignments.split()
+        new_list = []
+        for pair in alignments_list:
+            orig_source, orig_target = pair.split("-")
+            if reverse:
+                new_source, new_target = orig_target, orig_source
+                new_list.append((int(new_source), int(new_target)))
+            else:
+                new_list.append((int(orig_source), int(orig_target)))
+
+        return new_list
+
     @logger.catch(message="Unable to prepare labels", reraise=True)
-    def _prepare_label_matrix(self, dim1: int, dim2: int, sentence_alignments: str):
+    def _prepare_label_matrix(
+        self, dim1: int, dim2: int, sentence_alignments: list[tuple[int, int]]
+    ):
         label_matrix = torch.zeros((dim1, dim2), dtype=torch.float)
-        for entry in sentence_alignments.split():
-            source_i, target_j = entry.split("-")
-            if int(source_i) < dim1 and int(target_j) < dim2:
-                label_matrix[int(source_i), int(target_j)] = 1.0
+        for source_i, target_j in sentence_alignments:
+            if source_i < dim1 and target_j < dim2:
+                label_matrix[source_i, target_j] = 1.0
 
     @logger.catch(message="Unable to infer mask", reraise=True)
-    def _infer_mask(self, encoded):
+    def _infer_mask(self, encoded: BatchEncoding):
         # fallback method: split using sep token if no token_type_ids
         sep_token_id = self.tokenizer.sep_token_id
-        input_ids = encoded["input_ids"].squeeze().tolist()
+        input_ids = encoded["input_ids"].squeeze().tolist()  # type: ignore
         sep_indices = [i for i, t in enumerate(input_ids) if t == sep_token_id]
         mask = torch.zeros(len(input_ids), dtype=torch.bool)
         # get source tokens for cases like </s></s>
@@ -228,9 +285,10 @@ class AlignmentPairDataset(Dataset):
 
 if __name__ == "__main__":
     from transformers import AutoTokenizer
+
+    from src.configs.dataset_config import DatasetConfig
     from src.configs.model_config import ModelConfig
     from src.configs.train_config import TrainConfig
-    from src.configs.dataset_config import DatasetConfig
 
     model_config = ModelConfig(model_name_or_path="FacebookAI/roberta-base")
     train_config = TrainConfig(experiment_name="trainer-test", mixed_precision="no")
@@ -238,11 +296,11 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=10,
+        limit=100000,
     )
 
     tok = AutoTokenizer.from_pretrained(
         model_config.model_name_or_path, add_prefix_space=True
     )
     d = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
-    d.prepare_data(index=0)
+    d.run()
