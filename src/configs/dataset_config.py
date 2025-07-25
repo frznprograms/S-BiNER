@@ -19,7 +19,7 @@ class DatasetConfig(ABC):
     log_output_dir: str = "logs"
     max_sentence_length: int = 512
     save: bool = False
-    debug_mode: bool = False
+    debug_mode: bool = True  # TODO: change back to false when done
     save_dir: str = "output"
 
 

@@ -8,6 +8,7 @@ from easydict import EasyDict
 from loguru import logger
 from torch.utils.data import Dataset
 from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils_base import BatchEncoding
 
 from src.utils.decorators import timed_execution
 from src.utils.helpers import delist_the_list
@@ -85,29 +86,29 @@ class AlignmentPairDataset(Dataset):
         source_sentence: str = self.source_sentences[index]
         target_sentence: str = self.target_sentences[index]
         alignments: str = self.alignments[index]
+        combined_text = source_sentence + self.tokenizer.sep_token + target_sentence  # type: ignore
 
-        # returns dict[str, torch.Tensor] directly
         encoded = self.tokenizer(
-            source_sentence,
-            target_sentence,
-            is_split_into_words=True,
+            combined_text,
+            is_split_into_words=False,
             return_tensors="pt",
-            padding="max_length",
+            padding=False,  # handle padding at batch level
             truncation=True,
             max_length=self.max_sentence_length,
-            return_token_type_ids=True,
+            return_token_type_ids=False,
         )
+
+        # prepare input ids and attention mask
+        input_ids, attention_mask, token_type_ids = self._prepare_inputs(encoded)
+
+        if self.debug_mode:
+            self._view_encoded_text(encoded)
 
         source_len = len(source_sentence.split())
         target_len = len(target_sentence.split())
         label_matrix = self._prepare_label_matrix(
             dim1=source_len, dim2=target_len, sentence_alignments=alignments
         )
-
-        if self.debug_mode:
-            print(f"Encoding shape: {encoded.shape}")
-            print("Encodings:")
-            print(encoded)
 
         # prepare input ids and attention mask
         input_ids = encoded["input_ids"].squeeze()  # type: ignore
@@ -119,12 +120,12 @@ class AlignmentPairDataset(Dataset):
         source_mask = (
             (token_type_ids == 0)
             if token_type_ids is not None
-            else self._infer_mask(source_sentence, encoded)
+            else self._infer_mask(encoded)
         )
         target_mask = (
             (token_type_ids == 1)
             if token_type_ids is not None
-            else self._infer_mask(target_sentence, encoded)
+            else self._infer_mask(encoded)
         )
 
         # TODO: bpe2word encoding so we can map tokens back to the origin word
@@ -140,12 +141,13 @@ class AlignmentPairDataset(Dataset):
     @logger.catch(message="Unable to prepare labels", reraise=True)
     def _prepare_label_matrix(self, dim1: int, dim2: int, sentence_alignments: str):
         label_matrix = torch.zeros((dim1, dim2), dtype=torch.float)
-        for source_i, target_j in sentence_alignments.split():
+        for entry in sentence_alignments.split():
+            source_i, target_j = entry.split("-")
             if int(source_i) < dim1 and int(target_j) < dim2:
                 label_matrix[int(source_i), int(target_j)] = 1.0
 
     @logger.catch(message="Unable to infer mask", reraise=True)
-    def _infer_mask(self, sentence, encoded):
+    def _infer_mask(self, encoded):
         # TODO: consider edge cases: what happens if tokenizer does not have a separator id?
         # TODO: what happens in xlm case where two separators are used e.g. </s></s>
         # fallback method: split using sep token if no token_type_ids
@@ -160,6 +162,24 @@ class AlignmentPairDataset(Dataset):
             mask[start:end] = True
 
         return mask
+
+    @logger.catch(message="Unable to prepare inputs", reraise=True)
+    def _prepare_inputs(self, encoded: BatchEncoding):
+        input_ids = encoded["input_ids"].squeeze()  # type: ignore
+        attention_mask = encoded["attention_mask"].squeeze()  # type: ignore
+        sep_token_id = self.tokenizer.sep_token_id
+
+        # Find separator positions
+        sep_positions = (input_ids == sep_token_id).nonzero(as_tuple=True)[0]
+        token_type_ids = torch.zeros_like(input_ids)
+
+        if len(sep_positions) > 0:
+            first_sep_pos = sep_positions[0]
+            # Everything after the first separator for roberta should be token_type_id = 1
+            token_type_ids[first_sep_pos + 1 :] = 1
+        token_type_ids = token_type_ids.unsqueeze(0)
+
+        return input_ids, attention_mask, token_type_ids
 
     @logger.catch(message="Unable to read data", reraise=True)
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
@@ -176,3 +196,45 @@ class AlignmentPairDataset(Dataset):
         elif format == "pt":
             torch.save(data, save_path)
         logger.success("Data saved successfully.")
+
+    @logger.catch(message="Unable to view encoded text", reraise=True)
+    def _view_encoded_text(self, encoded: BatchEncoding):
+        print("Now showing the encoded text output")
+        print("=" * 50)
+        print(f"Encoded text return type: {type(encoded)}")
+        print("=" * 50)
+        print(f"Encoded input ids shape: {encoded['input_ids'].shape}")  # type: ignore
+        print("=" * 50)
+        print(f"Encoded attention mask shape: {encoded['attention_mask'].shape}")  # type: ignore
+        print("=" * 50)
+        token_type_ids = encoded.get("token_type_ids", None)
+        if token_type_ids is not None:
+            print(f"Encoded token type ids: {encoded['token_type_ids'].shape}")  # type: ignore
+        print("=" * 50)
+        print("Encodings: ")
+        for k, v in encoded.items():
+            print(k)
+            print(v)
+            print("=" * 50)
+
+
+if __name__ == "__main__":
+    from transformers import AutoTokenizer
+    from src.configs.model_config import ModelConfig
+    from src.configs.train_config import TrainConfig
+    from src.configs.dataset_config import DatasetConfig
+
+    model_config = ModelConfig(model_name_or_path="FacebookAI/roberta-base")
+    train_config = TrainConfig(experiment_name="trainer-test", mixed_precision="no")
+    train_dataset_config = DatasetConfig(
+        source_lines_path="data/cleaned_data/train.src",
+        target_lines_path="data/cleaned_data/train.tgt",
+        alignments_path="data/cleaned_data/train.talp",
+        limit=10,
+    )
+
+    tok = AutoTokenizer.from_pretrained(
+        model_config.model_name_or_path, add_prefix_space=True
+    )
+    d = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
+    d.prepare_data(index=0)
