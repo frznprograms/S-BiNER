@@ -79,6 +79,9 @@ class AlignmentPairDataset(Dataset):
             "labels": label_matrix,
         }
 
+    def __call__(self, track_memory_usage: bool = True):
+        self.run(track_memory_usage=track_memory_usage)
+
     @timed_execution
     @logger.catch(message="Unable to prepare dataset", reraise=True)
     def run(self, track_memory_usage: bool = True):
@@ -96,8 +99,8 @@ class AlignmentPairDataset(Dataset):
                 pbar.write(f"Unable to complete data preparation at index {i}")
             pbar.update(1)
 
-        # override to prevent excessive memory usage
-        if self.do_inference:
+        # override existing data to prevent excessive memory usage
+        if not self.do_inference:
             self.data = self.data + self.reverse_data
 
         if track_memory_usage:
@@ -303,4 +306,8 @@ if __name__ == "__main__":
         model_config.model_name_or_path, add_prefix_space=True
     )
     d = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
+    print("Trying default run method:")
     d.run()
+    print("=" * 50)
+    print("Trying __call__ method:")
+    d(track_memory_usage=False)
