@@ -24,7 +24,7 @@ class AlignmentPairDataset(Dataset):
     alignments_path: str
     limit: Optional[int] = None
     one_indexed: bool = False
-    context_sep: Optional[str] = " <SEP> "
+    context_sep: str = " <SEP> "
     do_inference: bool = False
     log_output_dir: str = "logs"
     max_sentence_length: int = 512
@@ -86,6 +86,9 @@ class AlignmentPairDataset(Dataset):
         source_sentence: str = self.source_sentences[index]
         target_sentence: str = self.target_sentences[index]
         alignments: str = self.alignments[index]
+
+        if self.tokenizer.sep_token_id is None:
+            self.tokenizer.add_special_tokens({"sep_token": self.context_sep})
         combined_text = source_sentence + self.tokenizer.sep_token + target_sentence  # type: ignore
 
         encoded = self.tokenizer(
@@ -148,7 +151,6 @@ class AlignmentPairDataset(Dataset):
 
     @logger.catch(message="Unable to infer mask", reraise=True)
     def _infer_mask(self, encoded):
-        # TODO: consider edge cases: what happens if tokenizer does not have a separator id?
         # TODO: what happens in xlm case where two separators are used e.g. </s></s>
         # fallback method: split using sep token if no token_type_ids
         sep_token_id = self.tokenizer.sep_token_id

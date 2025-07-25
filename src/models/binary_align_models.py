@@ -8,20 +8,24 @@ from transformers import (
     XLMRobertaModel,
     XLMRobertaPreTrainedModel,
 )
+from transformers.tokenization_utils import PreTrainedTokenizer
 from src.models.binary_token_classification import BinaryTokenClassificationModel
 from src.configs.model_config import ModelConfig
+
+from loguru import logger
 
 
 class RobertaModelForBinaryTokenClassification(
     RobertaPreTrainedModel, BinaryTokenClassificationModel
 ):
     def __init__(self, config: ModelConfig):
-        roberta_config = self.config._to_roberta_config()
+        roberta_config = config._to_roberta_config()
         super().__init__(config=roberta_config)
         self.num_labels = self.config.num_labels
 
         # prevent pooling to get token-level, not sentence level outputs
         self.encoder = RobertaModel(config=roberta_config, add_pooling_layer=False)
+        self._add_special_tokens(tokenizer=self.encoder.config.tokenizer_class)
 
         classifier_dropout = (
             self.config.classifier_dropout
@@ -54,6 +58,18 @@ class RobertaModelForBinaryTokenClassification(
     def set_input_embeddings(self, value):
         self.encoder.set_input_embeddings(value)
 
+    def _add_special_tokens(self, tokenizer: PreTrainedTokenizer):
+        tokenizer_vocab_size = len(tokenizer)
+        curr_vocab_size = self.encoder.config.vocab_size
+
+        if tokenizer_vocab_size > curr_vocab_size:
+            logger.info(
+                f"Tokenizer was found to have vocab size of {tokenizer_vocab_size} while the current \
+                vocab size of the model is {curr_vocab_size}. The size of the token embeddings will be \
+                resized to match {curr_vocab_size} to ensure consistency."
+            )
+            self.encoder.resize_token_embeddings(tokenizer_vocab_size)
+
 
 # class RobertaModelForBinaryTokenClassification(
 #     RobertaPreTrainedModel, BinaryTokenClassification
@@ -80,12 +96,13 @@ class XLMRobertaModelForBinaryTokenClassification(
     XLMRobertaPreTrainedModel, BinaryTokenClassificationModel
 ):
     def __init__(self, config: ModelConfig):
-        roberta_config = self.config._to_roberta_config()
+        roberta_config = config._to_roberta_config()
         super().__init__(config=roberta_config)
         self.num_labels = self.config.num_labels
 
         # prevent pooling to get token-level, not sentence level outputs
         self.encoder = XLMRobertaModel(config=roberta_config, add_pooling_layer=False)
+        self._add_special_tokens(tokenizer=self.encoder.config.tokenizer_class)
 
         classifier_dropout = (
             self.config.classifier_dropout
@@ -117,6 +134,18 @@ class XLMRobertaModelForBinaryTokenClassification(
 
     def set_input_embeddings(self, value):
         self.encoder.set_input_embeddings(value)
+
+    def _add_special_tokens(self, tokenizer):
+        tokenizer_vocab_size = len(tokenizer)
+        curr_vocab_size = self.encoder.config.vocab_size
+
+        if tokenizer_vocab_size > curr_vocab_size:
+            logger.info(
+                f"Tokenizer was found to have vocab size of {tokenizer_vocab_size} while the current \
+                vocab size of the model is {curr_vocab_size}. The size of the token embeddings will be \
+                resized to match {curr_vocab_size} to ensure consistency."
+            )
+            self.encoder.resize_token_embeddings(tokenizer_vocab_size)
 
 
 #     def forward(
