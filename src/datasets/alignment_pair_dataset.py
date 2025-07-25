@@ -37,8 +37,6 @@ class AlignmentPairDataset(Dataset):
         default_factory=list, init=False
     )
 
-    # TODO: find out if tensor types are correct -> does it all become FloatTensor anyway?
-
     def __post_init__(self):
         self.source_sentences: list[str] = self.read_data(
             path=self.source_lines_path, limit=self.limit
@@ -62,7 +60,7 @@ class AlignmentPairDataset(Dataset):
         alignments: str = self.alignments[index]
 
         item: dict[str, torch.Tensor] = EasyDict(self.data[index])
-        input_ids: torch.FloatTensor = item.input_ids  # type: ignore
+        input_ids: torch.LongTensor = item.input_ids  # type: ignore
         source_mask: torch.BoolTensor = item.source_mask  # type: ignore
         target_mask: torch.BoolTensor = item.target_mask  # type: ignore
         attention_mask: torch.IntTensor = item.attention_mask  # type: ignore
@@ -89,16 +87,16 @@ class AlignmentPairDataset(Dataset):
 
         if self.tokenizer.sep_token_id is None:
             self.tokenizer.add_special_tokens({"sep_token": self.context_sep})
-        combined_text = source_sentence + self.tokenizer.sep_token + target_sentence  # type: ignore
 
         encoded = self.tokenizer(
-            combined_text,
+            source_sentence,
+            target_sentence,
             is_split_into_words=False,
             return_tensors="pt",
-            padding=False,  # handle padding at batch level
+            padding=False,
             truncation=True,
             max_length=self.max_sentence_length,
-            return_token_type_ids=False,
+            return_token_type_ids=True,
         )
 
         # prepare input ids and attention mask
@@ -121,10 +119,12 @@ class AlignmentPairDataset(Dataset):
             else self._infer_mask(encoded)
         )
 
-        # TODO: bpe2word encoding so we can map tokens back to the origin word
+        # reverse mapping so we can map tokens back to the origin word
+        combined_token_to_word_mapping = encoded.word_ids()
 
         if self.debug_mode:
-            print(f"Combined sentence: {combined_text}")
+            self._view_tokens(input_ids)
+            print(f"Token-to_word mapping: {combined_token_to_word_mapping}")
             self._view_encoded_text(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -137,6 +137,7 @@ class AlignmentPairDataset(Dataset):
             "src_mask": source_mask,
             "tgt_mask": target_mask,
             "labels": label_matrix,
+            "word_to_token_mapping": combined_token_to_word_mapping,
         }
 
     @logger.catch(message="Unable to prepare labels", reraise=True)
@@ -176,7 +177,7 @@ class AlignmentPairDataset(Dataset):
             first_sep_pos = sep_positions[0]
             # Everything after the first separator for roberta should be token_type_id = 1
             token_type_ids[first_sep_pos + 1 :] = 1
-        token_type_ids = token_type_ids.unsqueeze(0)
+        # token_type_ids = token_type_ids.unsqueeze(0) no need to add batch size oops
 
         return input_ids, attention_mask, token_type_ids
 
@@ -195,6 +196,15 @@ class AlignmentPairDataset(Dataset):
         elif format == "pt":
             torch.save(data, save_path)
         logger.success("Data saved successfully.")
+
+    @logger.catch(message="Unable to view sentence and its tokens", reraise=True)
+    def _view_tokens(self, input_ids):
+        tokens = self.tokenizer.convert_ids_to_tokens(input_ids)
+        combined_text = self.tokenizer.decode(input_ids)
+        print("=" * 50)
+        print(f"Original sentence: {combined_text}")
+        print(f"Tokens: {tokens}")
+        print("=" * 50)
 
     @logger.catch(message="Unable to view encoded text", reraise=True)
     def _view_encoded_text(
