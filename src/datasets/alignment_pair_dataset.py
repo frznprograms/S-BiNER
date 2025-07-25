@@ -104,21 +104,11 @@ class AlignmentPairDataset(Dataset):
         # prepare input ids and attention mask
         input_ids, attention_mask, token_type_ids = self._prepare_inputs(encoded)
 
-        if self.debug_mode:
-            self._view_encoded_text(encoded)
-
         source_len = len(source_sentence.split())
         target_len = len(target_sentence.split())
         label_matrix = self._prepare_label_matrix(
             dim1=source_len, dim2=target_len, sentence_alignments=alignments
         )
-
-        # prepare input ids and attention mask
-        input_ids = encoded["input_ids"].squeeze()  # type: ignore
-        attention_mask = encoded["attention_mask"].squeeze()  # type: ignore
-        token_type_ids = encoded.get("token_type_ids", None)
-        if token_type_ids is not None:
-            token_type_ids = token_type_ids.squeeze()
 
         source_mask = (
             (token_type_ids == 0)
@@ -132,6 +122,14 @@ class AlignmentPairDataset(Dataset):
         )
 
         # TODO: bpe2word encoding so we can map tokens back to the origin word
+
+        if self.debug_mode:
+            print(f"Combined sentence: {combined_text}")
+            self._view_encoded_text(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+            )
 
         return {
             "input_ids": input_ids,
@@ -151,16 +149,15 @@ class AlignmentPairDataset(Dataset):
 
     @logger.catch(message="Unable to infer mask", reraise=True)
     def _infer_mask(self, encoded):
-        # TODO: what happens in xlm case where two separators are used e.g. </s></s>
         # fallback method: split using sep token if no token_type_ids
         sep_token_id = self.tokenizer.sep_token_id
         input_ids = encoded["input_ids"].squeeze().tolist()
         sep_indices = [i for i, t in enumerate(input_ids) if t == sep_token_id]
         mask = torch.zeros(len(input_ids), dtype=torch.bool)
-        # get source tokens
+        # get source tokens for cases like </s></s>
         if len(sep_indices) >= 2:
             start = 1
-            end = sep_indices[0]
+            end = sep_indices[1]
             mask[start:end] = True
 
         return mask
@@ -200,24 +197,23 @@ class AlignmentPairDataset(Dataset):
         logger.success("Data saved successfully.")
 
     @logger.catch(message="Unable to view encoded text", reraise=True)
-    def _view_encoded_text(self, encoded: BatchEncoding):
+    def _view_encoded_text(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        token_type_ids: torch.Tensor,
+    ):
         print("Now showing the encoded text output")
         print("=" * 50)
-        print(f"Encoded text return type: {type(encoded)}")
+        print(f"Encoded input ids shape: {input_ids.shape}")
+        print(f"Encoded input ids: {input_ids}")
         print("=" * 50)
-        print(f"Encoded input ids shape: {encoded['input_ids'].shape}")  # type: ignore
+        print(f"Encoded attention mask shape: {attention_mask.shape}")
+        print(f"Encoded attention mask: {attention_mask}")
         print("=" * 50)
-        print(f"Encoded attention mask shape: {encoded['attention_mask'].shape}")  # type: ignore
+        print(f"Encoded token type ids shape: {token_type_ids.shape}")
+        print(f"Encoded token type ids: {token_type_ids}")
         print("=" * 50)
-        token_type_ids = encoded.get("token_type_ids", None)
-        if token_type_ids is not None:
-            print(f"Encoded token type ids: {encoded['token_type_ids'].shape}")  # type: ignore
-        print("=" * 50)
-        print("Encodings: ")
-        for k, v in encoded.items():
-            print(k)
-            print(v)
-            print("=" * 50)
 
 
 if __name__ == "__main__":
