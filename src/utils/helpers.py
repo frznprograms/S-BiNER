@@ -118,6 +118,50 @@ def collate_fn_span(
     }
 
 
+@logger.catch(message="Unable to collate data into batches properly", reraise=True)
+def collate_fn(self, batch):
+    input_ids = pad_sequence(
+        [b["input_ids"] for b in batch],
+        batch_first=True,
+        padding_value=self.tokenizer.pad_token_id,
+    )
+    attention_mask = pad_sequence(
+        [b["attention_mask"] for b in batch],
+        batch_first=True,
+        padding_value=0,
+    )
+    src_masks = pad_sequence(
+        [b["source_mask"] for b in batch],
+        batch_first=True,
+        padding_value=0,
+    )
+    tgt_masks = pad_sequence(
+        [b["target_mask"] for b in batch],
+        batch_first=True,
+        padding_value=0,
+    )
+
+    max_src_len = src_masks.shape[1]
+    max_tgt_len = tgt_masks.shape[1]
+
+    padded_labels = []
+    for b in batch:
+        label = b["labels"]
+        padded = torch.zeros((max_src_len, max_tgt_len))
+        padded[: label.shape[0], : label.shape[1]] = label
+        padded_labels.append(padded)
+
+    labels = torch.stack(padded_labels)
+
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "source_mask": src_masks,
+        "target_mask": tgt_masks,
+        "labels": labels,
+    }
+
+
 @logger.catch(message="Unable to parse an alignment.", reraise=True)
 def parse_single_alignment(string, one_indexed=False, reverse: bool = False):
     assert "-" in string
@@ -156,9 +200,11 @@ def parse_config(
         # For any other type, return empty EasyDict
         return EasyDict({})
 
+
 def init_wandb_tracker():
     wandb.login()
     # wandb.init(project=self.project_name)
+
 
 def init_tensorboard_tracker():
     raise NotImplementedError

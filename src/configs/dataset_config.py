@@ -26,7 +26,7 @@ class DatasetConfig(ABC):
 @dataclass
 class DataLoaderConfig:
     collate_fn: Optional[Callable] = None  # collate_fn_span
-    batch_size: int = 16
+    batch_size: int = 4
     num_workers: int = 0
     shuffle: bool = True
     pin_memory: bool = not torch.backends.mps.is_available()  # Auto-disable for MPS

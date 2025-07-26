@@ -10,7 +10,7 @@ class TrainConfig(ABC):
     experiment_name: str
     num_train_epochs: int = 3
     mixed_precision: str = "fp16"
-    log_with: Optional[str] = "wandb"
+    log_with: Optional[str] = None  # TODO: change back to "wandb" when ready
     logging_steps: int = 50
     save_strategy: str = "steps"
     save_steps: Optional[int] = 50

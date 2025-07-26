@@ -61,6 +61,7 @@ class AlignmentPairDataset(Dataset):
         target_sentence: str = self.target_sentences[index]
         alignments: str = self.alignments[index]
 
+        # for efficiency, only convert to EasyDict when we want to get something
         item: dict[str, torch.Tensor] = EasyDict(self.data[index])
         input_ids: torch.LongTensor = item.input_ids  # type: ignore
         source_mask: torch.BoolTensor = item.source_mask  # type: ignore
@@ -100,7 +101,9 @@ class AlignmentPairDataset(Dataset):
             pbar.update(1)
 
         # override existing data to prevent excessive memory usage
-        if not self.do_inference:
+        if (
+            not self.do_inference
+        ):  # TODO: find out if data should be combined only under certain conditions
             self.data = self.data + self.reverse_data
 
         if track_memory_usage:
