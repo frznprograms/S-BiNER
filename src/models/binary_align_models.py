@@ -1,31 +1,21 @@
 import torch
 import torch.nn as nn
+from transformers import AutoConfig, AutoModel
 
-# import torch.nn.functional as F
-from transformers import (
-    RobertaModel,
-    RobertaPreTrainedModel,
-    XLMRobertaModel,
-    XLMRobertaPreTrainedModel,
-)
-from transformers.tokenization_utils import PreTrainedTokenizer
-from src.models.binary_token_classification import BinaryTokenClassificationModel
 from src.configs.model_config import ModelConfig
+from src.models.binary_token_classification import BinaryTokenClassificationModel
 
-from loguru import logger
 
-
-class RobertaModelForBinaryTokenClassification(
-    RobertaPreTrainedModel, BinaryTokenClassificationModel
-):
+class RobertaModelForBinaryTokenClassification(BinaryTokenClassificationModel):
     def __init__(self, config: ModelConfig):
-        roberta_config = config._to_roberta_config()
-        super().__init__(config=roberta_config)
+        roberta_config = AutoConfig.from_pretrained(config.model_name_or_path)
+        encoder = AutoModel.from_config(roberta_config)
+        super().__init__(encoder, config)
         self.num_labels = self.config.num_labels
 
         # prevent pooling to get token-level, not sentence level outputs
-        self.encoder = RobertaModel(config=roberta_config, add_pooling_layer=False)
-        self._add_special_tokens(tokenizer=self.encoder.config.tokenizer_class)
+        # self.encoder = RobertaModel(config=roberta_config, add_pooling_layer=False)
+        self.encoder = encoder
 
         classifier_dropout = (
             self.config.classifier_dropout
@@ -34,9 +24,6 @@ class RobertaModelForBinaryTokenClassification(
         )
 
         self.dropout = nn.Dropout(classifier_dropout)
-
-        # initialise weights and final processing
-        self.__post_init__()
 
     def forward(
         self,
@@ -57,18 +44,6 @@ class RobertaModelForBinaryTokenClassification(
 
     def set_input_embeddings(self, value):
         self.encoder.set_input_embeddings(value)
-
-    def _add_special_tokens(self, tokenizer: PreTrainedTokenizer):
-        tokenizer_vocab_size = len(tokenizer)
-        curr_vocab_size = self.encoder.config.vocab_size
-
-        if tokenizer_vocab_size > curr_vocab_size:
-            logger.info(
-                f"Tokenizer was found to have vocab size of {tokenizer_vocab_size} while the current \
-                vocab size of the model is {curr_vocab_size}. The size of the token embeddings will be \
-                resized to match {curr_vocab_size} to ensure consistency."
-            )
-            self.encoder.resize_token_embeddings(tokenizer_vocab_size)
 
 
 # class RobertaModelForBinaryTokenClassification(
@@ -92,18 +67,18 @@ class RobertaModelForBinaryTokenClassification(
 #         self.post_init()
 
 
-class XLMRobertaModelForBinaryTokenClassification(
-    XLMRobertaPreTrainedModel, BinaryTokenClassificationModel
-):
+class XLMRobertaModelForBinaryTokenClassification(BinaryTokenClassificationModel):
     def __init__(self, config: ModelConfig):
-        roberta_config = config._to_roberta_config()
-        super().__init__(config=roberta_config)
+        xlm_roberta_config = config._to_xlm_roberta_config()
+        encoder = AutoModel.from_config(xlm_roberta_config)
+        super().__init__(encoder, config)
         self.num_labels = self.config.num_labels
 
         # prevent pooling to get token-level, not sentence level outputs
-        self.encoder = XLMRobertaModel(config=roberta_config, add_pooling_layer=False)
-        self._add_special_tokens(tokenizer=self.encoder.config.tokenizer_class)
-
+        # self.encoder = XLMRobertaModel(
+        #     config=xlm_roberta_config, add_pooling_layer=False
+        # )
+        self.encoder = encoder
         classifier_dropout = (
             self.config.classifier_dropout
             if self.config.classifier_dropout is not None
@@ -111,9 +86,6 @@ class XLMRobertaModelForBinaryTokenClassification(
         )
 
         self.dropout = nn.Dropout(classifier_dropout)
-
-        # initialise weights and final processing
-        self.__post_init__()
 
     def forward(
         self,
@@ -134,18 +106,6 @@ class XLMRobertaModelForBinaryTokenClassification(
 
     def set_input_embeddings(self, value):
         self.encoder.set_input_embeddings(value)
-
-    def _add_special_tokens(self, tokenizer):
-        tokenizer_vocab_size = len(tokenizer)
-        curr_vocab_size = self.encoder.config.vocab_size
-
-        if tokenizer_vocab_size > curr_vocab_size:
-            logger.info(
-                f"Tokenizer was found to have vocab size of {tokenizer_vocab_size} while the current \
-                vocab size of the model is {curr_vocab_size}. The size of the token embeddings will be \
-                resized to match {curr_vocab_size} to ensure consistency."
-            )
-            self.encoder.resize_token_embeddings(tokenizer_vocab_size)
 
 
 #     def forward(

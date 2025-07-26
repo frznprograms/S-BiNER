@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Union
 import torch
 import torch.nn as nn
@@ -6,14 +5,15 @@ from transformers import RobertaPreTrainedModel, XLMRobertaPreTrainedModel
 from src.configs.model_config import ModelConfig
 
 
-@dataclass
 class BinaryTokenClassificationModel(nn.Module):
-    encoder: Union[RobertaPreTrainedModel, XLMRobertaPreTrainedModel]
-    config: ModelConfig
-
-    def __post_init__(self):
+    def __init__(
+        self,
+        encoder: Union[RobertaPreTrainedModel, XLMRobertaPreTrainedModel],
+        config: ModelConfig,
+    ):
         super().__init__()
-        # for [src || tgt] concatenation
+        self.encoder = encoder
+        self.config = config
         self.classifier = nn.Linear(self.config.hidden_size * 2, out_features=1)
 
     def forward(
@@ -27,30 +27,25 @@ class BinaryTokenClassificationModel(nn.Module):
         Arguments:
             input_ids: Tensor of shape (B, seq_len)
             attention_mask: Tensor of shape (B, seq_len)
-            src_mask: Bool Tensor of shape (B, seq_len) with 1s at source positions
-            tgt_mask: Bool Tensor of shape (B, seq_len) with 1s at target positions
+            source_mask: Bool Tensor of shape (B, seq_len) with 1s at source positions
+            target_mask: Bool Tensor of shape (B, seq_len) with 1s at target positions
 
         Returns:
             logits: Tensor of shape (B, src_len, tgt_len) with logits for each src-tgt token pair
         """
-        # get the contextual token representations
         sequence_output = self.encoder(
             input_ids=input_ids, attention_mask=attention_mask
         ).last_hidden_state  # (B, seq_len, H)
-        # get source and target token embeddings using boolean masks
-        source_repr = self.apply_mask(
-            sequence_output, source_mask
-        )  # (B, source_len, H)
-        target_repr = self.apply_mask(
-            sequence_output, target_mask
-        )  # (B, target_len, H)
+
+        source_repr = self.apply_mask(sequence_output, source_mask)  # (B, src_len, H)
+        target_repr = self.apply_mask(sequence_output, target_mask)  # (B, tgt_len, H)
 
         B, S, H = source_repr.shape
         T = target_repr.shape[1]
 
-        # create source-target pairwise combinations
         source_exp = source_repr.unsqueeze(2).expand(B, S, T, H)
-        target_exp = target_repr.unsqueeze(2).expand(B, S, T, H)
+        target_exp = target_repr.unsqueeze(1).expand(B, S, T, H)
+
         combined = torch.cat([source_exp, target_exp], dim=-1)  # (B, S, T, 2H)
         logits = self.classifier(combined).squeeze(-1)  # (B, S, T)
 
@@ -62,7 +57,6 @@ class BinaryTokenClassificationModel(nn.Module):
         for i in range(B):
             indices = mask[i].nonzero(as_tuple=True)[0]
             token_lists.append(sequence_output[i, indices, :])
-
         return nn.utils.rnn.pad_sequence(token_lists, batch_first=True)
 
 

@@ -49,6 +49,8 @@ class AlignmentPairDataset(Dataset):
         self.alignments: list[str] = self.read_data(
             path=self.alignments_path, limit=self.limit
         )
+        # prepare data immediately
+        self.run()
         logger.success(f"{self.__class__.__name__} initialized successfully")
 
     @logger.catch(reraise=True)
@@ -180,8 +182,8 @@ class AlignmentPairDataset(Dataset):
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "src_mask": source_mask,
-            "tgt_mask": target_mask,
+            "source_mask": source_mask,
+            "target_mask": target_mask,
             "labels": label_matrix,
             "word_to_token_mapping": combined_token_to_word_mapping,
         }
@@ -210,6 +212,8 @@ class AlignmentPairDataset(Dataset):
         for source_i, target_j in sentence_alignments:
             if source_i < dim1 and target_j < dim2:
                 label_matrix[source_i, target_j] = 1.0
+
+        return label_matrix
 
     @logger.catch(message="Unable to infer mask", reraise=True)
     def _infer_mask(self, encoded: BatchEncoding):
@@ -309,8 +313,6 @@ if __name__ == "__main__":
         model_config.model_name_or_path, add_prefix_space=True
     )
     d = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
-    print("Trying default run method:")
-    d.run()
     print("=" * 50)
     print("Trying __call__ method:")
     d(track_memory_usage=False)
