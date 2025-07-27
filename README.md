@@ -1,4 +1,5 @@
 <h1 align="center">S-BiNER</h1>
+<h3 align="center">Binary Word Alignment for NER and Cross-Lingual Tranfer Tasks</h3>
 
 ### Description
 This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on low-resource languages like Chinese. Along the way, I decided to reframe the training objective as truly binary, i.e. a token-to-token alignment problem. This leads to a higher time and space complexity, with the desired effect of better performance. 
