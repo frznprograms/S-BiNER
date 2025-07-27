@@ -37,7 +37,7 @@ class AlignmentTrainer:
     dataloader_config: DataLoaderConfig
     train_data: AlignmentPairDataset
     eval_data: Optional[AlignmentPairDataset] = None
-    device_type: str = "auto"
+    device_type: str = "cpu"  # TODO: change back to auto when cuda is ready
     seed_num: int = 42
     checkpoint_dir: str = "checkpoints"
     debug_mode: bool = False
@@ -120,11 +120,11 @@ class AlignmentTrainer:
         )
 
         self.criterion = nn.BCEWithLogitsLoss(reduction="none")  # Element-wise loss
-        total_masked_loss = 0.0
         # TODO: implement early stopping after eval is set up properly
 
         self.model.train()
         for epoch in range(self.train_config.num_train_epochs):
+            total_masked_loss = 0.0
             for step, batch in enumerate(self.train_dataloader):
                 # Move batch to device
                 input_ids = batch["input_ids"].to(self.user_defined_device)
@@ -138,6 +138,15 @@ class AlignmentTrainer:
                 logits = self.model(
                     input_ids, attention_mask, source_mask, target_mask
                 )  # (B, S, T)
+
+                # Align label shape with logits
+                # B, S_pred, T_pred = logits.shape
+                # labels = labels[:, :S_pred, :T_pred]
+                # label_mask = label_mask[:, :S_pred, :T_pred]
+
+                assert logits.shape == labels.shape == label_mask.shape, (
+                    f"Shape mismatch: logits {logits.shape}, labels {labels.shape}, label_mask {label_mask.shape}"
+                )
 
                 # Element-wise loss then mask
                 loss_matrix = self.criterion(logits, labels)  # (B, S, T)
@@ -360,7 +369,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=10,
+        limit=1000,
     )
     # eval_dataset_config = DatasetConfig(
     #     source_lines_path="data/cleaned_data/dev.src",
