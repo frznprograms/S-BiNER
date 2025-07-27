@@ -1,15 +1,16 @@
-Hi there, welcome to
-# S-BiNER #
+<h1 align="center">S-BiNER</h1>
 
 ### Description
-This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on Chinese.
+This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on low-resource languages like Chinese. Along the way, I decided to reframe the training objective as truly binary, i.e. a token-to-token alignment problem. This leads to a higher time and space complexity, with the desired effect of better performance. 
 
-**Disclaimer**: This framework is experimental and not designed for production-grade tasks. I am NOT selling this product for profit. In the spirit of collaboration and community-supported improvements, I wish to keep this repo free-to-use and open-source.
+The methodology here is intended to come with the added twist of simple heuristics-based annotation projection for Named Entity Recognition (NER) tasks, after the WA model has done all the heavy-lifting.
 
-This methodology comes with the added twist of simple annotation projection for Named Entity Recognition (NER) tasks. 
+This project is a work-in-progress, and I welcome constructive feedback into any ways we can improve the way the model is created, trained, and evaluated. Feel free to reach out to me via GitHub.
+
+**Disclaimer**: This framework is experimental and not designed for production-grade tasks. I am NOT selling this product for profit or for any monetary gain at all. In the spirit of collaboration and community-supported improvements, I wish to keep this repo free-to-use and open-source. ***Please include the citations included below if you wish to repurpose this work.*** 
 
 ### Author(s)
-Shane Bharathan
+Shane Vivek
 
 ### Instructions for usage
 First, install the `uv` package management software for Python: https://docs.astral.sh/uv/getting-started/installation/.
@@ -34,10 +35,6 @@ accelerate config
 ```
 and follow the prompts in the command line.
 
-To run inference using **S-BiNER**, run the following terminal command: 
-```
-
-```
 
 🚧 WORK IN PROGRESS 🚧
 
@@ -54,6 +51,7 @@ I would also like to thank the good folks at Natural Semantics (Qingdao) Technol
 
 **Please include these citations if this work is reproduced or repurposed in any way.**
 
+```
 @article{latouche2024binaryalign,
   title={BinaryAlign: Word Alignment as Binary Sequence Labeling},
   author={Latouche, Gaetan Lopez and Carbonneau, Marc-Andr{\'e} and Swanson, Ben},
@@ -113,3 +111,4 @@ I would also like to thank the good folks at Natural Semantics (Qingdao) Technol
   biburl    = {https://dblp.org/rec/journals/corr/abs-1907-11692.bib},
   bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+```
