@@ -136,15 +136,19 @@ class AlignmentPairDataset(Dataset):
         if self.tokenizer.sep_token_id is None:
             self.tokenizer.add_special_tokens({"sep_token": self.context_sep})
 
+        # Assume source_sentence and target_sentence are strings of whitespace-tokenized words
+        # combined_sentence = source_sentence + " </s><s> " + target_sentence
+
         encoded = self.tokenizer(
-            source_sentence,
-            target_sentence,
-            is_split_into_words=False,
+            source_sentence.split(),
+            target_sentence.split(),
+            is_split_into_words=True,
             return_tensors="pt",
             padding=False,
             truncation=True,
             max_length=self.max_sentence_length,
-            return_token_type_ids=True,
+            return_token_type_ids=False,  # does not work for roberta models
+            add_special_tokens=True,
         )
 
         # prepare input ids and attention mask
@@ -156,16 +160,8 @@ class AlignmentPairDataset(Dataset):
             dim1=source_len, dim2=target_len, sentence_alignments=prepped_alignments
         )
 
-        source_mask = (
-            (token_type_ids == 0)
-            if token_type_ids is not None
-            else self._infer_mask(encoded)
-        )
-        target_mask = (
-            (token_type_ids == 1)
-            if token_type_ids is not None
-            else self._infer_mask(encoded)
-        )
+        source_mask = self._infer_mask(encoded, get_target=False)
+        target_mask = self._infer_mask(encoded, get_target=True)
 
         # reverse mapping so we can map tokens back to the origin word
         combined_token_to_word_mapping = encoded.word_ids()
@@ -216,16 +212,20 @@ class AlignmentPairDataset(Dataset):
         return label_matrix
 
     @logger.catch(message="Unable to infer mask", reraise=True)
-    def _infer_mask(self, encoded: BatchEncoding):
-        # fallback method: split using sep token if no token_type_ids
+    def _infer_mask(self, encoded: BatchEncoding, get_target: bool = False):
         sep_token_id = self.tokenizer.sep_token_id
         input_ids = encoded["input_ids"].squeeze().tolist()  # type: ignore
         sep_indices = [i for i, t in enumerate(input_ids) if t == sep_token_id]
+
         mask = torch.zeros(len(input_ids), dtype=torch.bool)
-        # get source tokens for cases like </s></s>
+
         if len(sep_indices) >= 2:
-            start = 1
-            end = sep_indices[1]
+            if get_target:
+                start = sep_indices[1] + 1
+                end = len(input_ids) - 1  # exclude final </s>
+            else:
+                start = 1  # after initial <s>
+                end = sep_indices[1]
             mask[start:end] = True
 
         return mask
@@ -314,5 +314,5 @@ if __name__ == "__main__":
     )
     d = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
     print("=" * 50)
-    print("Trying __call__ method:")
-    d(track_memory_usage=False)
+    # print("Trying __call__ method:")
+    # d(track_memory_usage=False)
