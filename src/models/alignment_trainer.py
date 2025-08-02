@@ -123,8 +123,11 @@ class AlignmentTrainer:
         # TODO: implement early stopping after eval is set up properly
 
         self.model.train()
+        total_steps = 0
+        total_loss_all_epochs = 0.0  # Track loss across all epochs for final return
         for epoch in range(self.train_config.num_train_epochs):
             total_masked_loss = 0.0
+            epoch_steps = 0  # Track steps within this epoch
             for step, batch in enumerate(self.train_dataloader):
                 # Move batch to device
                 input_ids = batch["input_ids"].to(self.user_defined_device)
@@ -159,17 +162,19 @@ class AlignmentTrainer:
                 scheduler.step()
 
                 total_masked_loss += masked_loss.item()
-                self._save_model_checkpoint(pbar=pbar, global_step=step)
+                total_loss_all_epochs += masked_loss.item()
+                epoch_steps += 1
+                self._save_model_checkpoint(pbar=pbar, global_step=total_steps)
                 self._cleanup_old_checkpoints(pbar=pbar)
                 pbar.update(1)
+                total_steps += 1
 
-            pbar.write(
-                f"Epoch {epoch + 1}: Avg masked loss = {total_masked_loss / (step + 1):.6f}"
-            )
+            # Calculate average loss for this epoch using epoch_steps
+            avg_epoch_loss = total_masked_loss / epoch_steps
+            pbar.write(f"Epoch {epoch + 1}: Avg masked loss = {avg_epoch_loss:.6f}")
 
-        return total_masked_loss / (
-            len(self.train_dataloader) * self.train_config.num_train_epochs
-        )
+        # Return average loss across all epochs and all steps
+        return total_loss_all_epochs / total_steps
 
     @torch.no_grad
     @logger.catch(message="Failed to perform evaluation.", reraise=True)
