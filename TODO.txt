@@ -32,9 +32,6 @@ Evaluation
 Documentation
 - Organise better
     - main folder readme to just contain title, description, author, citations ✅
-    - inner folder readme to contain more explanations on how the code works
-
 
 Further applications:
 - Can we consider using the entity span mapping algorithm to use
-- replace SpanAlign with BinaryAlign in candidate matching pipeline
