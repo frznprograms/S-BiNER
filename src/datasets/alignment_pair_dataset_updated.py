@@ -164,6 +164,28 @@ class AlignmentPairDataset(Dataset):
 
         source_input_ids, source_attn_mask = self._prepare_inputs(source_encoding)
         target_input_ids, target_attn_mask = self._prepare_inputs(target_encoding)
+        batched_label_matrices = self._prepare_label_matrices(
+            source_lines=source_lines,
+            target_lines=target_lines,
+            alignments_list=prepped_alignments,
+        )
+
+        source_token_to_word_mapping = source_encoding.word_ids()
+        target_token_to_word_mapping = target_encoding.word_ids()
+
+        if self.debug_mode:
+            # all debugging functions were designed to take batches, even if batch_size=1
+            self._view_tokens(source_input_ids)
+            print(f"SOURCE token-to-word mapping: {source_token_to_word_mapping}")
+            self._view_tokens(target_input_ids)
+            print(f"TARGET token-to-word mapping: {target_token_to_word_mapping}")
+            self._view_encoded_texts(
+                source_input_ids=source_input_ids,
+                target_input_ids=target_input_ids,
+                source_attn_mask=source_attn_mask,
+                target_attn_mask=target_attn_mask,
+            )
+            self._view_label_matrices(label_matrices=batched_label_matrices)
 
     @logger.catch(message="Unable to prepare alignments", reraise=True)
     def _prepare_alignments(
@@ -206,13 +228,46 @@ class AlignmentPairDataset(Dataset):
         #
         return input_ids, attn_mask
 
-    @logger.catch(message="Unable to view label matrix", reraise=True)
+    @logger.catch(message="Unable to prepare label matrices", reraise=True)
+    def _prepare_label_matrices(
+        self,
+        source_lines: list[str],
+        target_lines: list[str],
+        alignments_list: list[list[tuple[int, int]]],
+    ) -> list[torch.FloatTensor]:
+        label_matrices = []
+        for source_line, target_line, alignments in zip(
+            source_lines, target_lines, alignments_list
+        ):
+            # assume both source and target lines are already split into words
+            source_dim = len(source_line)
+            target_dim = len(target_line)
+            label_matrix = torch.zeros((source_dim, target_dim), dtype=torch.float)
+            for source_i, target_j in alignments:
+                if source_i < source_dim and target_j < target_dim:
+                    label_matrix[source_i, target_j] = 1.0
+
+            label_matrices.append(label_matrix)
+
+        return label_matrices
+
+    @logger.catch()
     def _view_label_matrix(self, label_matrix):
         print("Now showing the label matrix")
         print("=" * 50)
         print(f"Label matrix shape: {label_matrix.shape}")
         print(f"Label matrix: {label_matrix}")
         print("=" * 50)
+
+    @logger.catch(message="Unable to view label matrices", reraise=True)
+    def _view_label_matrices(self, label_matrices: list[torch.FloatTensor]):
+        print("Now showing batched label matrices")
+        print(f"Batched matrices size: {len(label_matrices)}")
+        print("=" * 50)
+        for matrix in label_matrices:
+            print(f"Matrix shape: {matrix.shape}")
+            print(matrix)
+            print("-" * 50)
 
     @logger.catch(message="Unable to read data", reraise=True)
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
