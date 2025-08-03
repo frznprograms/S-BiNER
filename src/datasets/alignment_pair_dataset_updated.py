@@ -1,0 +1,231 @@
+import os
+import tracemalloc
+from dataclasses import dataclass, field
+from typing import Any, Optional, Union
+
+import pandas as pd
+import torch
+from easydict import EasyDict
+from loguru import logger
+from torch.utils.data import Dataset
+from tqdm.auto import tqdm
+from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_utils_base import BatchEncoding
+
+from src.configs.dataset_config import DataLoaderConfig
+from src.utils.decorators import timed_execution
+from src.utils.helpers import delist_the_list
+
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
+
+
+@dataclass
+class AlignmentPairDataset(Dataset):
+    tokenizer: PreTrainedTokenizer
+    source_lines_path: str
+    target_lines_path: str
+    alignments_path: str
+    dataloader_config: DataLoaderConfig
+    limit: Optional[int] = None
+    one_indexed: bool = False
+    context_sep: str = " <SEP> "
+    do_inference: bool = False
+    log_output_dir: str = "logs"
+    max_sentence_length: int = 512
+    save: bool = False
+    debug_mode: bool = False
+    save_dir: str = "output"
+    sure: list = field(default_factory=list, init=False)
+    data: list[dict[str, torch.Tensor]] = field(default_factory=list, init=False)
+    reverse_data: list[dict[str, torch.Tensor]] = field(
+        default_factory=list, init=False
+    )
+
+    def __post_init__(self):
+        self.source_sentences: list[str] = self.read_data(
+            path=self.source_lines_path, limit=self.limit
+        )
+        self.target_sentences: list[str] = self.read_data(
+            path=self.target_lines_path, limit=self.limit
+        )
+        self.alignments: list[str] = self.read_data(
+            path=self.alignments_path, limit=self.limit
+        )
+        self._is_prepared: bool = False
+        # prepare data immediately
+        self.run()
+        logger.success(f"{self.__class__.__name__} initialized successfully")
+
+    @logger.catch(reraise=True)
+    def __len__(self):
+        return len(self.data)
+
+    @logger.catch(message="Unable to retrieve item", reraise=True)
+    def __getitem__(self, index: int) -> dict[str, Union[str, torch.Tensor]]:
+        source_sentence: str = self.source_sentences[index]
+        target_sentence: str = self.target_sentences[index]
+        alignments: str = self.alignments[index]
+
+        # for efficiency, only convert to EasyDict when we want to get something
+        item: dict[str, torch.Tensor] = EasyDict(self.data[index])
+        input_ids: torch.LongTensor = item.input_ids  # type: ignore
+        source_mask: torch.BoolTensor = item.source_mask  # type: ignore
+        target_mask: torch.BoolTensor = item.target_mask  # type: ignore
+        attention_mask: torch.IntTensor = item.attention_mask  # type: ignore
+        label_matrix: torch.FloatTensor = item.label_matrix  # type: ignore
+
+        return {
+            "source_sentence": source_sentence,
+            "target_sentence": target_sentence,
+            "alignments": alignments,
+            "input_ids": input_ids,
+            "source_mask": source_mask,
+            "target_mask": target_mask,
+            "attention_mask": attention_mask,
+            "labels": label_matrix,
+        }
+
+    @logger.catch(message="huh")
+    def run(self):
+        if self._is_prepared:
+            answer = input(
+                "Dataset already prepared, are you sure you wish to overried the dataset? [y/n]"
+            )
+            if answer.strip() == "n":
+                logger.warning("Abandoning dataset preparation")
+                return
+        n = len(self.source_sentences)
+        batch_size = self.dataloader_config.batch_size
+        logger.info(f"Preparing dataset of {n} samples with batch size {batch_size}...")
+
+        # clear any existing encoded data
+        self.data.clear()
+        self.reverse_data.clear()
+
+        pbar = tqdm(total=n)
+        for i in range(0, n, batch_size):
+            batch_forward_res = self._prepare_data(start_index=i)
+            batch_reverse_res = self._prepare_data(start_index=i, reverse=True)
+            self.data.append(batch_forward_res)
+            self.reverse_data.append(batch_reverse_res)
+            # TODO: verify that this appending is indeed what we want
+            pbar.update(batch_size)
+            if self.debug_mode:
+                logger.debug(
+                    f"Processed batch {i // batch_size + 1}/{(n + batch_size - 1) // batch_size}"
+                )
+
+        self._is_prepared = True
+        logger.success(
+            f"Dataset preparation complete. Processed {len(self.source_encoded)} batches."
+        )
+
+    def _prepare_data(self, start_index: int, reverse: bool = False):
+        # note: these sentences have already been split into words
+        batch_size = self.dataloader_config.batch_size
+        end_index = min(start_index + batch_size, len(self.source_sentences))
+
+        source_lines: list[str] = self.source_sentences[start_index:end_index]
+        target_lines: list[str] = self.target_sentences[start_index:end_index]
+        alignments: list[str] = self.alignments[start_index:end_index]
+
+        if reverse:
+            source_lines, target_lines = target_lines, source_lines
+            reverse_alignments = self._prepare_alignments(alignments, reverse=True)
+            prepped_alignments = reverse_alignments
+        else:
+            prepped_alignments = self._prepare_alignments(alignments, reverse=False)
+
+        if self.tokenizer.sep_token_id is None:
+            self.tokenizer.add_special_tokens({"sep_token": self.context_sep})
+
+        # Tokenize source lines
+        source_encoding: BatchEncoding = self.tokenizer(
+            [line.split() for line in source_lines],
+            is_split_into_words=True,
+            add_special_tokens=True,
+            padding=True,
+            truncation=True,  # Fixed: was "max_length"
+            max_length=self.max_sentence_length,
+            return_tensors="pt",
+        )
+
+        # Tokenize target lines
+        target_encoding: BatchEncoding = self.tokenizer(
+            [line.split() for line in target_lines],
+            is_split_into_words=True,
+            add_special_tokens=True,
+            padding=True,
+            truncation=True,  # Fixed: was "max_length"
+            max_length=self.max_sentence_length,
+            return_tensors="pt",
+        )
+
+        source_input_ids, source_attn_mask = self._prepare_inputs(source_encoding)
+        target_input_ids, target_attn_mask = self._prepare_inputs(target_encoding)
+
+    @logger.catch(message="Unable to prepare alignments", reraise=True)
+    def _prepare_alignments(
+        self, alignments: list[str], reverse: bool = False
+    ) -> list[list[tuple[int, int]]]:
+        new_list = []
+        for i in range(len(alignments)):
+            alignments_list = alignments[i].split()
+            temp = []
+            for pair in alignments_list:
+                orig_source, orig_target = pair.split("-")
+                if reverse:
+                    new_source, new_target = orig_target, orig_source
+                    temp.append((int(new_source), int(new_target)))
+                else:
+                    temp.append((int(orig_source), int(orig_target)))
+            new_list.append(temp)
+
+        return new_list
+
+    @logger.catch(message="Unable to view label matrix", reraise=True)
+    def _view_label_matrix(self, label_matrix):
+        print("Now showing the label matrix")
+        print("=" * 50)
+        print(f"Label matrix shape: {label_matrix.shape}")
+        print(f"Label matrix: {label_matrix}")
+        print("=" * 50)
+
+    @logger.catch(message="Unable to read data", reraise=True)
+    def read_data(self, path: str, limit: Optional[int]) -> list[str]:
+        data = delist_the_list(pd.read_csv(path, sep="\t").values.tolist())
+        if limit is not None:
+            data = data[:limit]
+
+        return data
+
+    @logger.catch(message="Unable to save data", reraise=True)
+    def save_data(self, data: Any, save_path: str, format: str = "pt") -> None:
+        if format == "csv":
+            data.to_csv(save_path)
+        elif format == "pt":
+            torch.save(data, save_path)
+        logger.success("Data saved successfully.")
+
+
+if __name__ == "__main__":
+    from transformers import AutoTokenizer
+
+    from src.configs.dataset_config import DatasetConfig
+    from src.configs.model_config import ModelConfig
+    from src.configs.train_config import TrainConfig
+
+    model_config = ModelConfig(model_name_or_path="FacebookAI/roberta-base")
+    train_config = TrainConfig(experiment_name="trainer-test", mixed_precision="no")
+    train_dataset_config = DatasetConfig(
+        source_lines_path="data/cleaned_data/train.src",
+        target_lines_path="data/cleaned_data/train.tgt",
+        alignments_path="data/cleaned_data/train.talp",
+        limit=1,
+    )
+
+    tok = AutoTokenizer.from_pretrained(
+        model_config.model_name_or_path, add_prefix_space=True
+    )
+    d = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
+    print("=" * 50)
