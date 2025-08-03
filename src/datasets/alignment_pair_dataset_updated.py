@@ -9,6 +9,7 @@ from easydict import EasyDict
 from loguru import logger
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
+from transformers import RealmReader
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 
@@ -182,6 +183,28 @@ class AlignmentPairDataset(Dataset):
             new_list.append(temp)
 
         return new_list
+
+    @logger.catch(message="Unale to prepare input ids", reraise=True)
+    def _prepare_inputs(self, encoded: BatchEncoding):
+        input_ids = encoded[
+            "input_ids"
+        ]  # TODO: find out if need to squeeze (should be no because it is a batch)
+        attn_mask = encoded["attention_mask"]
+        # we will not prepare token type ids
+
+        #        sep_token_id = self.tokenizer.sep_token_id
+        #
+        #        # Find separator positions
+        #        sep_positions = (input_ids == sep_token_id).nonzero(as_tuple=True)[0]
+        #        token_type_ids = torch.zeros_like(input_ids)
+        #
+        #        if len(sep_positions) > 0:
+        #            first_sep_pos = sep_positions[0]
+        #            # Everything after the first separator for roberta should be token_type_id = 1
+        #            token_type_ids[first_sep_pos + 1 :] = 1
+        #        # token_type_ids = token_type_ids.unsqueeze(0) no need to add batch size oops
+        #
+        return input_ids, attn_mask
 
     @logger.catch(message="Unable to view label matrix", reraise=True)
     def _view_label_matrix(self, label_matrix):
