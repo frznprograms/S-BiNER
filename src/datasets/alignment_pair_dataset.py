@@ -174,6 +174,7 @@ class AlignmentPairDataset(Dataset):
                 attention_mask=attention_mask,
                 token_type_ids=token_type_ids,
             )
+            self._view_label_matrix(label_matrix=label_matrix)
 
         return {
             "input_ids": input_ids,
@@ -292,6 +293,14 @@ class AlignmentPairDataset(Dataset):
         print(f"Encoded token type ids: {token_type_ids}")
         print("=" * 50)
 
+    @logger.catch(message="Unable to view label matrix", reraise=True)
+    def _view_label_matrix(self, label_matrix):
+        print("Now showing the label matrix")
+        print("=" * 50)
+        print(f"Label matrix shape: {label_matrix.shape}")
+        print(f"Label matrix: {label_matrix}")
+        print("=" * 50)
+
 
 if __name__ == "__main__":
     from transformers import AutoTokenizer
@@ -306,7 +315,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=100000,
+        limit=1,
     )
 
     tok = AutoTokenizer.from_pretrained(
