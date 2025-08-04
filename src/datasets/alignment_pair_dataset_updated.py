@@ -118,14 +118,12 @@ class AlignmentPairDataset(Dataset):
                             batch_forward_res["target_input_ids"][j],
                         ]
                     ),
-                    "source_mask": torch.ones(
-                        batch_forward_res["source_input_ids"][j].shape[0],
-                        dtype=torch.bool,
-                    ),
-                    "target_mask": torch.ones(
-                        batch_forward_res["target_input_ids"][j].shape[0],
-                        dtype=torch.bool,
-                    ),
+                    "source_token_to_word_mapping": batch_forward_res[
+                        "source_token_to_word_mapping"
+                    ][j],
+                    "target_token_to_word_mapping": batch_forward_res[
+                        "target_token_to_word_mapping"
+                    ][j],
                     "attention_mask": torch.cat(
                         [
                             batch_forward_res["source_attn_mask"][j],
@@ -144,14 +142,12 @@ class AlignmentPairDataset(Dataset):
                             batch_reverse_res["target_input_ids"][j],
                         ]
                     ),
-                    "source_mask": torch.ones(
-                        batch_reverse_res["source_input_ids"][j].shape[0],
-                        dtype=torch.bool,
-                    ),
-                    "target_mask": torch.ones(
-                        batch_reverse_res["target_input_ids"][j].shape[0],
-                        dtype=torch.bool,
-                    ),
+                    "source_token_to_word_mapping": batch_reverse_res[
+                        "source_token_to_word_mapping"
+                    ][j],
+                    "target_token_to_word_mapping": batch_reverse_res[
+                        "target_token_to_word_mapping"
+                    ][j],
                     "attention_mask": torch.cat(
                         [
                             batch_reverse_res["source_attn_mask"][j],
@@ -304,8 +300,8 @@ class AlignmentPairDataset(Dataset):
             source_lines, target_lines, alignments_list
         ):
             # assume both source and target lines are already split into words
-            source_dim = len(source_line)
-            target_dim = len(target_line)
+            source_dim = len(source_line.split())
+            target_dim = len(target_line.split())
             label_matrix = torch.zeros((source_dim, target_dim), dtype=torch.float)
             for source_i, target_j in alignments:
                 if source_i < source_dim and target_j < target_dim:
