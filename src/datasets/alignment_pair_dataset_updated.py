@@ -1,5 +1,4 @@
 import os
-import tracemalloc
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
@@ -9,7 +8,6 @@ from easydict import EasyDict
 from loguru import logger
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
-from transformers import RealmReader
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 
@@ -69,11 +67,11 @@ class AlignmentPairDataset(Dataset):
 
         # for efficiency, only convert to EasyDict when we want to get something
         item: dict[str, torch.Tensor] = EasyDict(self.data[index])
-        input_ids: torch.LongTensor = item.input_ids  # type: ignore
-        source_mask: torch.BoolTensor = item.source_mask  # type: ignore
-        target_mask: torch.BoolTensor = item.target_mask  # type: ignore
-        attention_mask: torch.IntTensor = item.attention_mask  # type: ignore
-        label_matrix: torch.FloatTensor = item.label_matrix  # type: ignore
+        input_ids: torch.Tensor = item.input_ids  # type: ignore
+        source_mask: torch.Tensor = item.source_mask  # type: ignore
+        target_mask: torch.Tensor = item.target_mask  # type: ignore
+        attention_mask: torch.Tensor = item.attention_mask  # type: ignore
+        label_matrix: torch.Tensor = item.label_matrix  # type: ignore
 
         return {
             "source_sentence": source_sentence,
@@ -86,6 +84,7 @@ class AlignmentPairDataset(Dataset):
             "labels": label_matrix,
         }
 
+    @timed_execution
     @logger.catch(message="huh")
     def run(self):
         if self._is_prepared:
@@ -107,21 +106,75 @@ class AlignmentPairDataset(Dataset):
         for i in range(0, n, batch_size):
             batch_forward_res = self._prepare_data(start_index=i)
             batch_reverse_res = self._prepare_data(start_index=i, reverse=True)
-            self.data.append(batch_forward_res)
-            self.reverse_data.append(batch_reverse_res)
-            # TODO: verify that this appending is indeed what we want
+
+            # Convert batched results to individual entries
+            batch_size_actual = len(batch_forward_res["source_input_ids"])
+            for j in range(batch_size_actual):
+                # Create individual forward entry
+                forward_entry = {
+                    "input_ids": torch.cat(
+                        [
+                            batch_forward_res["source_input_ids"][j],
+                            batch_forward_res["target_input_ids"][j],
+                        ]
+                    ),
+                    "source_mask": torch.ones(
+                        batch_forward_res["source_input_ids"][j].shape[0],
+                        dtype=torch.bool,
+                    ),
+                    "target_mask": torch.ones(
+                        batch_forward_res["target_input_ids"][j].shape[0],
+                        dtype=torch.bool,
+                    ),
+                    "attention_mask": torch.cat(
+                        [
+                            batch_forward_res["source_attn_mask"][j],
+                            batch_forward_res["target_attn_mask"][j],
+                        ]
+                    ),
+                    "label_matrix": batch_forward_res["labels"][j],
+                }
+                self.data.append(forward_entry)
+
+                # Create individual reverse entry
+                reverse_entry = {
+                    "input_ids": torch.cat(
+                        [
+                            batch_reverse_res["source_input_ids"][j],
+                            batch_reverse_res["target_input_ids"][j],
+                        ]
+                    ),
+                    "source_mask": torch.ones(
+                        batch_reverse_res["source_input_ids"][j].shape[0],
+                        dtype=torch.bool,
+                    ),
+                    "target_mask": torch.ones(
+                        batch_reverse_res["target_input_ids"][j].shape[0],
+                        dtype=torch.bool,
+                    ),
+                    "attention_mask": torch.cat(
+                        [
+                            batch_reverse_res["source_attn_mask"][j],
+                            batch_reverse_res["target_attn_mask"][j],
+                        ]
+                    ),
+                    "label_matrix": batch_reverse_res["labels"][j],
+                }
+                self.reverse_data.append(reverse_entry)
+
             pbar.update(batch_size)
             if self.debug_mode:
                 logger.debug(
                     f"Processed batch {i // batch_size + 1}/{(n + batch_size - 1) // batch_size}"
                 )
-
         self._is_prepared = True
         logger.success(
-            f"Dataset preparation complete. Processed {len(self.source_encoded)} batches."
+            f"Dataset preparation complete. Processed {len(self.source_sentences) // batch_size} batches."
         )
 
-    def _prepare_data(self, start_index: int, reverse: bool = False):
+    def _prepare_data(
+        self, start_index: int, reverse: bool = False
+    ) -> dict[str, list[torch.Tensor]]:
         # note: these sentences have already been split into words
         batch_size = self.dataloader_config.batch_size
         end_index = min(start_index + batch_size, len(self.source_sentences))
@@ -175,9 +228,10 @@ class AlignmentPairDataset(Dataset):
 
         if self.debug_mode:
             # all debugging functions were designed to take batches, even if batch_size=1
-            self._view_tokens(source_input_ids)
+            self._view_tokens(
+                source_input_ids=source_input_ids, target_input_ids=target_input_ids
+            )
             print(f"SOURCE token-to-word mapping: {source_token_to_word_mapping}")
-            self._view_tokens(target_input_ids)
             print(f"TARGET token-to-word mapping: {target_token_to_word_mapping}")
             self._view_encoded_texts(
                 source_input_ids=source_input_ids,
@@ -186,6 +240,15 @@ class AlignmentPairDataset(Dataset):
                 target_attn_mask=target_attn_mask,
             )
             self._view_label_matrices(label_matrices=batched_label_matrices)
+        return {
+            "source_input_ids": source_input_ids,
+            "target_input_ids": target_input_ids,
+            "labels": batched_label_matrices,
+            "source_token_to_word_mapping": source_token_to_word_mapping,
+            "target_token_to_word_mapping": target_token_to_word_mapping,
+            "source_attn_mask": source_attn_mask,
+            "target_attn_mask": target_attn_mask,
+        }
 
     @logger.catch(message="Unable to prepare alignments", reraise=True)
     def _prepare_alignments(
@@ -207,10 +270,10 @@ class AlignmentPairDataset(Dataset):
         return new_list
 
     @logger.catch(message="Unale to prepare input ids", reraise=True)
-    def _prepare_inputs(self, encoded: BatchEncoding):
-        input_ids = encoded[
-            "input_ids"
-        ]  # TODO: find out if need to squeeze (should be no because it is a batch)
+    def _prepare_inputs(
+        self, encoded: BatchEncoding
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        input_ids = encoded["input_ids"]
         attn_mask = encoded["attention_mask"]
         # we will not prepare token type ids
 
@@ -226,6 +289,7 @@ class AlignmentPairDataset(Dataset):
         #            token_type_ids[first_sep_pos + 1 :] = 1
         #        # token_type_ids = token_type_ids.unsqueeze(0) no need to add batch size oops
         #
+
         return input_ids, attn_mask
 
     @logger.catch(message="Unable to prepare label matrices", reraise=True)
@@ -234,7 +298,7 @@ class AlignmentPairDataset(Dataset):
         source_lines: list[str],
         target_lines: list[str],
         alignments_list: list[list[tuple[int, int]]],
-    ) -> list[torch.FloatTensor]:
+    ) -> list[torch.Tensor]:
         label_matrices = []
         for source_line, target_line, alignments in zip(
             source_lines, target_lines, alignments_list
@@ -251,16 +315,68 @@ class AlignmentPairDataset(Dataset):
 
         return label_matrices
 
-    @logger.catch()
-    def _view_label_matrix(self, label_matrix):
-        print("Now showing the label matrix")
+    @logger.catch(message="Unable to view tokens", reraise=True)
+    def _view_tokens(
+        self, source_input_ids: torch.Tensor, target_input_ids: torch.Tensor
+    ):
+        print("Now showing tokens")
+        batch_size = source_input_ids.shape[0]
+
+        # Iterate over each entry in the batch
+        for i in range(batch_size):
+            print("=" * 50)
+            print(f"BATCH ENTRY {i + 1}")
+            print("=" * 50)
+
+            # Extract single entries from batch
+            source_ids_single = source_input_ids[i]
+            target_ids_single = target_input_ids[i]
+
+            # Convert to tokens and decode
+            source_tokens = self.tokenizer.convert_ids_to_tokens(source_ids_single)
+            target_tokens = self.tokenizer.convert_ids_to_tokens(target_ids_single)
+            source_text = self.tokenizer.decode(source_ids_single)
+            target_text = self.tokenizer.decode(target_ids_single)
+
+            print("Source side")
+            print("-" * 25)
+            print(f"Original source text: {source_text}")
+            print(f"Ids to tokens: {source_tokens}")
+            print("-" * 25)
+            print("Target side")
+            print("-" * 25)
+            print(f"Original target text: {target_text}")
+            print(f"Ids to tokens: {target_tokens}")
+
         print("=" * 50)
-        print(f"Label matrix shape: {label_matrix.shape}")
-        print(f"Label matrix: {label_matrix}")
+
+    @logger.catch(message="Unable to view encoded text", reraise=True)
+    def _view_encoded_texts(
+        self,
+        source_input_ids: torch.Tensor,
+        source_attn_mask: torch.Tensor,
+        target_input_ids: torch.Tensor,
+        target_attn_mask: torch.Tensor,
+    ):
+        print("Now showing the encoded text output")
+        print("=" * 50)
+        print("Source encoding")
+        print("-" * 25)
+        print(f"Source input ids shape: {source_input_ids.shape}")
+        print(f"Source input ids: {source_input_ids}")
+        print(f"Source attention mask shape: {source_attn_mask.shape}")
+        print(f"Source attention mask: {source_attn_mask}")
+        print("=" * 50)
+        print("Target encoding")
+        print("-" * 25)
+        print(f"Target input ids shape: {target_input_ids.shape}")
+        print(f"Target input ids: {target_input_ids}")
+        print(f"Target attention mask shape: {target_attn_mask.shape}")
+        print(f"Target attention mask: {target_attn_mask}")
         print("=" * 50)
 
     @logger.catch(message="Unable to view label matrices", reraise=True)
-    def _view_label_matrices(self, label_matrices: list[torch.FloatTensor]):
+    def _view_label_matrices(self, label_matrices: list[torch.Tensor]):
         print("Now showing batched label matrices")
         print(f"Batched matrices size: {len(label_matrices)}")
         print("=" * 50)
@@ -301,9 +417,14 @@ if __name__ == "__main__":
         alignments_path="data/cleaned_data/train.talp",
         limit=1,
     )
+    dataloader_config = DataLoaderConfig()  # just use default batch_size=4
 
     tok = AutoTokenizer.from_pretrained(
         model_config.model_name_or_path, add_prefix_space=True
     )
-    d = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
+    d = AlignmentPairDataset(
+        tokenizer=tok,
+        **train_dataset_config.__dict__,
+        dataloader_config=dataloader_config,
+    )
     print("=" * 50)
