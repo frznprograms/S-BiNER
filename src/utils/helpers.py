@@ -118,54 +118,29 @@ def collate_fn_span(
     }
 
 
-@logger.catch(message="Unable to collate data into batches properly", reraise=True)
-def create_collate_fn(tokenizer):
+@logger.catch(message="Model unable to collate data", reraise=True)
+def create_collate_fn(tokenizer: PreTrainedTokenizer):
     def collate_fn(batch):
-        input_ids = pad_sequence(
+        input_ids = torch.nn.utils.rnn.pad_sequence(
             [b["input_ids"] for b in batch],
             batch_first=True,
-            padding_value=tokenizer.pad_token_id,
+            padding_value=tokenizer.pad_token_id,  # type: ignore
         )
-        attention_mask = pad_sequence(
+        attention_mask = torch.nn.utils.rnn.pad_sequence(
             [b["attention_mask"] for b in batch],
             batch_first=True,
-            padding_value=0,
+            padding_value=0.0,
         )
-        src_masks = pad_sequence(
-            [b["source_mask"] for b in batch],
-            batch_first=True,
-            padding_value=0,
-        )
-        tgt_masks = pad_sequence(
-            [b["target_mask"] for b in batch],
-            batch_first=True,
-            padding_value=0,
-        )
-
-        max_src_len = src_masks.shape[1]
-        max_tgt_len = tgt_masks.shape[1]
-
-        padded_labels = []
-        padded_label_masks = []
-        for b in batch:
-            label = b["labels"]
-            padded = torch.zeros((max_src_len, max_tgt_len))
-            label_mask = torch.zeros((max_src_len, max_tgt_len))
-            padded[: label.shape[0], : label.shape[1]] = label
-            label_mask[: label.shape[0], : label.shape[1]] = 1.0
-            padded_labels.append(padded)
-            padded_label_masks.append(label_mask)
-
-        labels = torch.stack(padded_labels)
-        label_mask = torch.stack(padded_label_masks)
+        labels = torch.stack([b["label_matrix"] for b in batch])
+        source_word_ids = [b["source_token_to_word_mapping"] for b in batch]
+        target_word_ids = [b["target_token_to_word_mapping"] for b in batch]
 
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "source_mask": src_masks,
-            "target_mask": tgt_masks,
             "labels": labels,
-            "label_mask": label_mask,
+            "source_word_ids": source_word_ids,
+            "target_word_ids": target_word_ids,
         }
 
     return collate_fn

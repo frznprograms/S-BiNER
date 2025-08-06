@@ -1,8 +1,12 @@
+from numpy import mean
 from transformers.tokenization_utils import PreTrainedTokenizer
-from typing import Union
+from typing import Callable, Union
 import torch
 import torch.nn as nn
-from transformers import RobertaPreTrainedModel, XLMRobertaPreTrainedModel
+from transformers import (
+    RobertaPreTrainedModel,
+    XLMRobertaPreTrainedModel,
+)
 from src.configs.model_config import ModelConfig
 from loguru import logger
 
@@ -54,7 +58,10 @@ class BinaryTokenClassificationModel(nn.Module):
 
     @logger.catch(message="Model unable to pool embeddings", reraise=True)
     def _pool_word_embeddings(
-        self, outputs: torch.Tensor, batched_word_ids: torch.Tensor
+        self,
+        outputs: torch.Tensor,
+        batched_word_ids: torch.Tensor,
+        agg_fn: Callable = mean,
     ) -> torch.Tensor:
         """pools token embeddings to their corresponding word level"""
         B, L, H = outputs.size()
@@ -68,13 +75,12 @@ class BinaryTokenClassificationModel(nn.Module):
                     continue  # ignore separator tokens
                 if word_id != current_word_id:
                     if current_vecs:
-                        word_vectors.append(torch.stack(current_vecs).mean(dim=0))
-                        # TODO: here we use mean pooling, let it be customizable
+                        word_vectors.append(agg_fn(torch.stack(current_vecs), dim=0))
                     current_vecs = []
                     current_word_id = word_id
                 current_vecs.append(outputs[i, j])
             if current_vecs:
-                word_vectors.append(torch.stack(current_vecs).mean(dim=0))
+                word_vectors.append(agg_fn(torch.stack(current_vecs), dim=0))
             if word_vectors:
                 pooled.append(torch.stack(word_vectors))
             else:
@@ -82,7 +88,6 @@ class BinaryTokenClassificationModel(nn.Module):
 
         return nn.utils.rnn.pad_sequence(pooled, batch_first=True)
 
-    # TODO: if keeping this here, remove from src.helpers
     @logger.catch(message="Model unable to collate data", reraise=True)
     def create_collate_fn(self, tokenizer: PreTrainedTokenizer):
         def collate_fn(batch):

@@ -14,7 +14,7 @@ class ModelConfig(ABC):
     weight_decay: float = 1e-2
     num_labels: int = 2
     batch_size: int = 4  # can increase for CUDA devices
-    classifier_dropout: float = 0.3
+    classifier_dropout: float = 0.2
     hidden_dropout_prob: float = 0.1
     hidden_size: int = 768
     gradient_checkpointing: bool = True
