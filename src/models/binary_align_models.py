@@ -27,16 +27,16 @@ class RobertaModelForBinaryTokenClassification(BinaryTokenClassificationModel):
 
     def forward(
         self,
-        input_ids: torch.FloatTensor,
-        attention_mask: torch.FloatTensor,
-        source_mask: torch.BoolTensor,
-        target_mask: torch.BoolTensor,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        source_word_ids: torch.Tensor,
+        target_word_ids: torch.Tensor,
     ):
         return super(RobertaModelForBinaryTokenClassification, self).forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            source_mask=source_mask,
-            target_mask=target_mask,
+            source_word_ids=source_word_ids,
+            target_word_ids=target_word_ids,
         )
 
     def get_input_embeddings(self):
@@ -89,16 +89,16 @@ class XLMRobertaModelForBinaryTokenClassification(BinaryTokenClassificationModel
 
     def forward(
         self,
-        input_ids: torch.FloatTensor,
-        attention_mask: torch.FloatTensor,
-        source_mask: torch.BoolTensor,
-        target_mask: torch.BoolTensor,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        source_word_ids: torch.Tensor,
+        target_word_ids: torch.Tensor,
     ):
         return super(XLMRobertaModelForBinaryTokenClassification, self).forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            source_mask=source_mask,
-            target_mask=target_mask,
+            source_word_ids=source_word_ids,
+            target_word_ids=target_word_ids,
         )
 
     def get_input_embeddings(self):
