@@ -71,18 +71,18 @@ class AlignmentPairDataset(Dataset):
         # for efficiency, only convert to EasyDict when we want to get something
         item: dict[str, torch.Tensor] = EasyDict(self.data[index])
         input_ids: torch.Tensor = item.input_ids  # type: ignore
-        source_mask: torch.Tensor = item.source_mask  # type: ignore
-        target_mask: torch.Tensor = item.target_mask  # type: ignore
-        attention_mask: torch.Tensor = item.attention_mask  # type: ignore
+        source_token_to_word_mapping: torch.Tensor = item.source_token_to_word_mapping  # type: ignore
+        target_token_to_word_mapping: torch.Tensor = item.target_token_to_word_mapping  # type: ignore        attention_mask: torch.Tensor = item.attention_mask  # type: ignore
         label_matrix: torch.Tensor = item.label_matrix  # type: ignore
+        attention_mask: torch.Tensor = item.attention_mask  # type: ignore
 
         return {
             "source_sentence": source_sentence,
             "target_sentence": target_sentence,
             "alignments": alignments,
             "input_ids": input_ids,
-            "source_mask": source_mask,
-            "target_mask": target_mask,
+            "source_word_ids": source_token_to_word_mapping,
+            "target_word_ids": target_token_to_word_mapping,
             "attention_mask": attention_mask,
             "labels": label_matrix,
         }
@@ -101,8 +101,7 @@ class AlignmentPairDataset(Dataset):
         batch_size = self.dataloader_config.batch_size
         logger.info(f"Preparing dataset of {n} samples with batch size {batch_size}...")
 
-        # clear any existing encoded data
-        self.data.clear()
+        # clear any existing encoded data self.data.clear()
         self.reverse_data.clear()
 
         pbar = tqdm(total=n)
@@ -122,9 +121,9 @@ class AlignmentPairDataset(Dataset):
                             batch_forward_res["target_input_ids"][j],
                         ]
                     ),
-                    "source_token_to_word_mapping": (
-                        batch_forward_res["source_token_to_word_mapping"][j]
-                    ),
+                    "source_token_to_word_mapping": batch_forward_res[
+                        "source_token_to_word_mapping"
+                    ][j],
                     "target_token_to_word_mapping": batch_forward_res[
                         "target_token_to_word_mapping"
                     ][j],
@@ -146,10 +145,10 @@ class AlignmentPairDataset(Dataset):
                             batch_reverse_res["target_input_ids"][j],
                         ]
                     ),
-                    "source_token_to_word_mapping": (
-                        batch_forward_res["source_token_to_word_mapping"][j]
-                    ),
-                    "target_token_to_word_mapping": batch_forward_res[
+                    "source_token_to_word_mapping": batch_reverse_res[
+                        "source_token_to_word_mapping"
+                    ][j],
+                    "target_token_to_word_mapping": batch_reverse_res[
                         "target_token_to_word_mapping"
                     ][j],
                     "attention_mask": torch.cat(
@@ -223,14 +222,20 @@ class AlignmentPairDataset(Dataset):
             alignments_list=prepped_alignments,
         )
 
-        source_token_to_word_mapping = [
-            self._make_tensor_worthy(source_encoding.word_ids(batch_index=i))
-            for i in range(len(source_lines))
-        ]
-        target_token_to_word_mapping = [
-            self._make_tensor_worthy(target_encoding.word_ids(batch_index=i))
-            for i in range(len(target_lines))
-        ]
+        # source_token_to_word_mapping = [
+        #    source_encoding.word_ids(batch_index=i) for i in range(len(source_lines))
+        # ]
+        # target_token_to_word_mapping = [
+        #    target_encoding.word_ids(batch_index=i) for i in range(len(target_lines))
+        # ]
+
+        # Get word mappings and pad them to match the tokenized sequence length
+        source_token_to_word_mapping = self._prepare_word_mappings(
+            source_encoding, len(source_lines)
+        )
+        target_token_to_word_mapping = self._prepare_word_mappings(
+            target_encoding, len(target_lines)
+        )
 
         if self.debug_mode:
             # all debugging functions were designed to take batches, even if batch_size=1
@@ -250,7 +255,7 @@ class AlignmentPairDataset(Dataset):
         return {
             "source_input_ids": source_input_ids,
             "target_input_ids": target_input_ids,
-            "labels": batched_label_matrices,
+            "labels": batched_label_matrices,  # type: ignore
             "source_token_to_word_mapping": source_token_to_word_mapping,
             "target_token_to_word_mapping": target_token_to_word_mapping,
             "source_attn_mask": source_attn_mask,
@@ -398,16 +403,27 @@ class AlignmentPairDataset(Dataset):
             for key, value in entry.items():
                 print(f"{key}: {type(value)}")
 
-    @logger.catch(
-        message="Unable to convert list to tensor-compatible format", reraise=True
-    )
-    def _make_tensor_worthy(
-        self, batched_word_ids: list[list[Optional[int]]]
-    ) -> list[list[int]]:
-        return [
-            [elem if elem is not None else -1 for elem in single]
-            for single in batched_word_ids
-        ]
+    @logger.catch(message="Unable to prepare word mappings", reraise=True)
+    def _prepare_word_mappings(
+        self, encoding: BatchEncoding, batch_size: int
+    ) -> torch.Tensor:
+        """
+        Prepare word mappings as tensors with proper padding.
+        """
+        # Get the sequence length from the input_ids (which are already padded)
+        seq_length = encoding["input_ids"].size(1)  # type: ignore
+
+        # Initialize tensor with -1 (padding value)
+        word_mappings = torch.full((batch_size, seq_length), -1, dtype=torch.long)
+
+        # Fill in the actual word mappings
+        for i in range(batch_size):
+            word_ids = encoding.word_ids(batch_index=i)
+            for j, word_id in enumerate(word_ids):
+                if j < seq_length:  # Safety check
+                    word_mappings[i, j] = word_id if word_id is not None else -1
+
+        return word_mappings
 
     @logger.catch(message="Unable to read data", reraise=True)
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
@@ -439,7 +455,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=1,
+        limit=4,
     )
     dataloader_config = DataLoaderConfig()  # just use default batch_size=4
 

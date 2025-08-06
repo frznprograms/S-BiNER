@@ -1,5 +1,3 @@
-from numpy import mean
-from transformers.tokenization_utils import PreTrainedTokenizer
 from typing import Callable, Union
 import torch
 import torch.nn as nn
@@ -61,7 +59,7 @@ class BinaryTokenClassificationModel(nn.Module):
         self,
         outputs: torch.Tensor,
         batched_word_ids: torch.Tensor,
-        agg_fn: Callable = mean,
+        agg_fn: Callable = torch.mean,
     ) -> torch.Tensor:
         """pools token embeddings to their corresponding word level"""
         B, L, H = outputs.size()
@@ -87,33 +85,6 @@ class BinaryTokenClassificationModel(nn.Module):
                 pooled.append(torch.zeros(1, H, device=outputs.device))
 
         return nn.utils.rnn.pad_sequence(pooled, batch_first=True)
-
-    @logger.catch(message="Model unable to collate data", reraise=True)
-    def create_collate_fn(self, tokenizer: PreTrainedTokenizer):
-        def collate_fn(batch):
-            input_ids = torch.nn.utils.rnn.pad_sequence(
-                [b["input_ids"] for b in batch],
-                batch_first=True,
-                padding_value=tokenizer.pad_token_id,  # type: ignore
-            )
-            attention_mask = torch.nn.utils.rnn.pad_sequence(
-                [b["attention_mask"] for b in batch],
-                batch_first=True,
-                padding_value=0.0,
-            )
-            labels = torch.stack([b["label_matrix"] for b in batch])
-            source_word_ids = [b["source_token_to_word_mapping"] for b in batch]
-            target_word_ids = [b["target_token_to_word_mapping"] for b in batch]
-
-            return {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-                "labels": labels,
-                "source_word_ids": source_word_ids,
-                "target_word_ids": target_word_ids,
-            }
-
-        return collate_fn
 
     def apply_mask(self, sequence_output, mask: torch.BoolTensor):
         B, L, H = sequence_output.size()
