@@ -53,6 +53,9 @@ class AlignmentPairDataset(Dataset):
         self._is_prepared: bool = False
         # prepare data immediately
         self.run()
+        if self.debug_mode:
+            self._verify_data_types()
+
         logger.success(f"{self.__class__.__name__} initialized successfully")
 
     @logger.catch(reraise=True)
@@ -119,9 +122,9 @@ class AlignmentPairDataset(Dataset):
                             batch_forward_res["target_input_ids"][j],
                         ]
                     ),
-                    "source_token_to_word_mapping": batch_forward_res[
-                        "source_token_to_word_mapping"
-                    ][j],
+                    "source_token_to_word_mapping": (
+                        batch_forward_res["source_token_to_word_mapping"][j]
+                    ),
                     "target_token_to_word_mapping": batch_forward_res[
                         "target_token_to_word_mapping"
                     ][j],
@@ -143,10 +146,10 @@ class AlignmentPairDataset(Dataset):
                             batch_reverse_res["target_input_ids"][j],
                         ]
                     ),
-                    "source_token_to_word_mapping": batch_reverse_res[
-                        "source_token_to_word_mapping"
-                    ][j],
-                    "target_token_to_word_mapping": batch_reverse_res[
+                    "source_token_to_word_mapping": (
+                        batch_forward_res["source_token_to_word_mapping"][j]
+                    ),
+                    "target_token_to_word_mapping": batch_forward_res[
                         "target_token_to_word_mapping"
                     ][j],
                     "attention_mask": torch.cat(
@@ -221,10 +224,12 @@ class AlignmentPairDataset(Dataset):
         )
 
         source_token_to_word_mapping = [
-            source_encoding.word_ids(batch_index=i) for i in range(len(source_lines))
+            self._make_tensor_worthy(source_encoding.word_ids(batch_index=i))
+            for i in range(len(source_lines))
         ]
         target_token_to_word_mapping = [
-            target_encoding.word_ids(batch_index=i) for i in range(len(target_lines))
+            self._make_tensor_worthy(target_encoding.word_ids(batch_index=i))
+            for i in range(len(target_lines))
         ]
 
         if self.debug_mode:
@@ -320,7 +325,7 @@ class AlignmentPairDataset(Dataset):
     @logger.catch(message="Unable to view tokens", reraise=True)
     def _view_tokens(
         self, source_input_ids: torch.Tensor, target_input_ids: torch.Tensor
-    ):
+    ) -> None:
         print("Now showing tokens")
         batch_size = source_input_ids.shape[0]
 
@@ -359,7 +364,7 @@ class AlignmentPairDataset(Dataset):
         source_attn_mask: torch.Tensor,
         target_input_ids: torch.Tensor,
         target_attn_mask: torch.Tensor,
-    ):
+    ) -> None:
         print("Now showing the encoded text output")
         print("=" * 50)
         print("Source encoding")
@@ -386,6 +391,23 @@ class AlignmentPairDataset(Dataset):
             print(f"Matrix shape: {matrix.shape}")
             print(matrix)
             print("-" * 50)
+
+    @logger.catch(message="Unable to verify datatypes", reraise=True)
+    def _verify_data_types(self) -> None:
+        for entry in self.data:
+            for key, value in entry.items():
+                print(f"{key}: {type(value)}")
+
+    @logger.catch(
+        message="Unable to convert list to tensor-compatible format", reraise=True
+    )
+    def _make_tensor_worthy(
+        self, batched_word_ids: list[list[Optional[int]]]
+    ) -> list[list[int]]:
+        return [
+            [elem if elem is not None else -1 for elem in single]
+            for single in batched_word_ids
+        ]
 
     @logger.catch(message="Unable to read data", reraise=True)
     def read_data(self, path: str, limit: Optional[int]) -> list[str]:
@@ -417,7 +439,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=240000,
+        limit=1,
     )
     dataloader_config = DataLoaderConfig()  # just use default batch_size=4
 
