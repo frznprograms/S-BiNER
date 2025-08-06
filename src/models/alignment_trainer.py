@@ -132,14 +132,21 @@ class AlignmentTrainer:
                 # Move batch to device
                 input_ids = batch["input_ids"].to(self.user_defined_device)
                 attention_mask = batch["attention_mask"].to(self.user_defined_device)
-                source_mask = batch["source_mask"].to(self.user_defined_device)
-                target_mask = batch["target_mask"].to(self.user_defined_device)
+                source_token_to_word_mapping = batch["source_word_ids"].to(
+                    self.user_defined_device
+                )
+                target_token_to_word_mapping = batch["target_word_ids"].to(
+                    self.user_defined_device
+                )
                 labels = batch["labels"].to(self.user_defined_device)
                 label_mask = batch["label_mask"].to(self.user_defined_device).float()
 
                 # Forward pass
                 logits = self.model(
-                    input_ids, attention_mask, source_mask, target_mask
+                    input_ids,
+                    attention_mask,
+                    source_token_to_word_mapping,
+                    target_token_to_word_mapping,
                 )  # (B, S, T)
 
                 # Align label shape with logits
@@ -185,11 +192,20 @@ class AlignmentTrainer:
         for batch in tqdm(self.eval_dataloader, desc="Running Validation"):
             input_ids = batch["input_ids"].to(self.user_defined_device)
             attention_mask = batch["attention_mask"].to(self.user_defined_device)
-            source_mask = batch["source_mask"].to(self.user_defined_device)
-            target_mask = batch["target_mask"].to(self.user_defined_device)
+            source_token_to_word_mapping = batch["source_word_ids"].to(
+                self.user_defined_device
+            )
+            target_token_to_word_mapping = batch["target_word_ids"].to(
+                self.user_defined_device
+            )
             labels = batch["labels"].to(self.user_defined_device)
 
-            logits = self.model(input_ids, attention_mask, source_mask, target_mask)  # type: ignore # (B, S, T)
+            logits = self.model(
+                input_ids,
+                attention_mask,
+                source_token_to_word_mapping,
+                target_token_to_word_mapping,
+            )  # type: ignore # (B, S, T)
             loss = self.criterion(logits, labels)
             total_loss += loss.item()
             return total_loss / len(self.eval_dataloader)  # type: ignore
@@ -386,8 +402,14 @@ if __name__ == "__main__":
     tok = AutoTokenizer.from_pretrained(
         model_config.model_name_or_path, add_prefix_space=True
     )
-    dataloader_config = DataLoaderConfig(collate_fn=create_collate_fn(tok))
-    train_data = AlignmentPairDataset(tokenizer=tok, **train_dataset_config.__dict__)
+    dataloader_config = DataLoaderConfig(
+        collate_fn=None
+    )  # TODO: change back to collation once it works
+    train_data = AlignmentPairDataset(
+        tokenizer=tok,
+        **train_dataset_config.__dict__,
+        dataloader_config=dataloader_config,
+    )
     # eval_data = AlignmentPairDataset(tokenizer=tok, **eval_dataset_config.__dict__)
 
     trainer = AlignmentTrainer(

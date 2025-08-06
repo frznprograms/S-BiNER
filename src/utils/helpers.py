@@ -7,7 +7,6 @@ import wandb
 import yaml
 from easydict import EasyDict
 from loguru import logger
-from torch.nn.utils.rnn import pad_sequence
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 
@@ -71,53 +70,6 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> int:
     return seed_num
 
 
-@logger.catch(message="Unable to execute dataloader collate function", reraise=True)
-def collate_fn_span(
-    examples, tokenizer: PreTrainedTokenizer, do_inference: bool = True
-):
-    def ensure_tensor(x):
-        return x if isinstance(x, torch.Tensor) else torch.tensor(x, dtype=torch.long)
-
-    # Flatten if necessary (for bidirectional samples)
-    flat = []
-    for ex in examples:
-        if isinstance(ex, list):
-            flat.extend(ex)
-        else:
-            flat.append(ex)
-
-    # Convert to tensor before any use
-    for i, x in enumerate(flat):
-        x["input_ids"] = ensure_tensor(x["input_ids"])
-        x["attention_mask"] = ensure_tensor(x["attention_mask"])
-        x["labels"] = ensure_tensor(x["labels"])
-
-        # print(f"[DEBUG] input_ids[{i}] shape: {x['input_ids'].shape}")
-
-    # Now that all are tensors, we can safely pad
-    input_ids = pad_sequence(
-        [x["input_ids"] for x in flat],
-        batch_first=True,
-        padding_value=tokenizer.pad_token_id,  # type:ignore
-    )
-    attention_mask = pad_sequence(
-        [x["attention_mask"] for x in flat],
-        batch_first=True,
-        padding_value=0,
-    )
-    labels = pad_sequence(
-        [x["labels"] for x in flat],
-        batch_first=True,
-        padding_value=-100,
-    )
-
-    return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "labels": labels,
-    }
-
-
 @logger.catch(message="Model unable to collate data", reraise=True)
 def create_collate_fn(tokenizer: PreTrainedTokenizer):
     def collate_fn(batch):
@@ -131,7 +83,18 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
             batch_first=True,
             padding_value=0.0,
         )
-        labels = torch.stack([b["label_matrix"] for b in batch])
+
+        # pad labels to max source and target length
+        padded_labels = []
+        for b in batch:
+            max_src_len = max(b["label_matrix"].shape[0] for b in batch)
+            max_tgt_len = max(b["label_matrix"].shape[1] for b in batch)
+            label = b["label_matrix"]
+            padded = torch.zeros((max_src_len, max_tgt_len), dtype=label.dtype)
+            padded[: label.shape[0], : label.shape[1]] = label
+            padded_labels.append(padded)
+
+        labels = torch.stack(padded_labels)
         source_word_ids = [b["source_token_to_word_mapping"] for b in batch]
         target_word_ids = [b["target_token_to_word_mapping"] for b in batch]
 
@@ -139,8 +102,8 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels,
-            "source_word_ids": source_word_ids,
-            "target_word_ids": target_word_ids,
+            "source_word_ids": torch.tensor(source_word_ids),
+            "target_word_ids": torch.tensor(target_word_ids),
         }
 
     return collate_fn
