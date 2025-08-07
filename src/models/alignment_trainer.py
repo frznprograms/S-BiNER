@@ -139,7 +139,9 @@ class AlignmentTrainer:
                     self.user_defined_device
                 )
                 labels = batch["labels"].to(self.user_defined_device)
+                print(f"Labels shape: {labels.shape}")
                 label_mask = batch["label_mask"].to(self.user_defined_device).float()
+                print(f"Label mask shape: {label_mask.shape}")
 
                 # Forward pass
                 logits = self.model(
@@ -402,9 +404,7 @@ if __name__ == "__main__":
     tok = AutoTokenizer.from_pretrained(
         model_config.model_name_or_path, add_prefix_space=True
     )
-    dataloader_config = DataLoaderConfig(
-        collate_fn=None
-    )  # TODO: change back to collation once it works
+    dataloader_config = DataLoaderConfig(collate_fn=create_collate_fn(tokenizer=tok))
     train_data = AlignmentPairDataset(
         tokenizer=tok,
         **train_dataset_config.__dict__,

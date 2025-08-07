@@ -71,7 +71,6 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> int:
     return seed_num
 
 
-@logger.catch(message="Model unable to collate data", reraise=True)
 def create_collate_fn(tokenizer: PreTrainedTokenizer):
     def collate_fn(batch):
         input_ids = pad_sequence(
@@ -82,40 +81,50 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
         attention_mask = pad_sequence(
             [b["attention_mask"] for b in batch],
             batch_first=True,
-            padding_value=0.0,
+            padding_value=0,
         )
 
-        # Determine max dimensions for label matrix
-        max_src_len = max(b["label_matrix"].shape[0] for b in batch)
-        max_tgt_len = max(b["label_matrix"].shape[1] for b in batch)
+        # Determine true word counts from mappings (excluding padding)
+        max_src_len = max(
+            len(set(w for w in b["source_token_to_word_mapping"] if w != -1))
+            for b in batch
+        )
+        max_tgt_len = max(
+            len(set(w for w in b["target_token_to_word_mapping"] if w != -1))
+            for b in batch
+        )
 
-        # Prepare padded labels and label masks
+        # Pad label matrix and label mask
         padded_labels = []
         label_masks = []
         for b in batch:
             label = b["label_matrix"]
             padded = torch.zeros((max_src_len, max_tgt_len), dtype=label.dtype)
-            padded[: label.shape[0], : label.shape[1]] = label
-            padded_labels.append(padded)
-
             mask = torch.zeros((max_src_len, max_tgt_len), dtype=torch.bool)
-            mask[: label.shape[0], : label.shape[1]] = 1
+
+            clip_src = min(label.shape[0], max_src_len)
+            clip_tgt = min(label.shape[1], max_tgt_len)
+
+            padded[:clip_src, :clip_tgt] = label[:clip_src, :clip_tgt]
+            mask[:clip_src, :clip_tgt] = 1
+
+            padded_labels.append(padded)
             label_masks.append(mask)
 
         labels = torch.stack(padded_labels)
         label_mask = torch.stack(label_masks)
 
+        # Word ID mapping (already created in dataset; now pad them)
         source_word_ids = [
-            torch.tensor(b["source_token_to_word_mapping"]) for b in batch
+            b["source_token_to_word_mapping"].detach().clone() for b in batch
         ]
         target_word_ids = [
-            torch.tensor(b["target_token_to_word_mapping"]) for b in batch
+            b["target_token_to_word_mapping"].detach().clone() for b in batch
         ]
-
-        source_word_ids = torch.nn.utils.rnn.pad_sequence(
+        source_word_ids = pad_sequence(
             source_word_ids, batch_first=True, padding_value=-1
         )
-        target_word_ids = torch.nn.utils.rnn.pad_sequence(
+        target_word_ids = pad_sequence(
             target_word_ids, batch_first=True, padding_value=-1
         )
 

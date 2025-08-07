@@ -35,9 +35,27 @@ class BinaryTokenClassificationModel(nn.Module):
         ).last_hidden_state  # (B, L, H)
         B, L, H = outputs.shape
 
+        print("-" * 50)
+        print("Debugging how the model processes the tensors...")
+        print("-" * 50)
+        print(f"Input_id shapes: {input_ids.shape}")
+        print(f"Attention mask shape: {attention_mask.shape}")
+        print(f"Source word ids shape: {source_word_ids.shape}")
+        print(f"Target word ids shape: {target_word_ids.shape}")
+        print("-" * 50)
+        print(f"Model outputs shape: {outputs.shape}")
+        print("-" * 50)
+
         # pool token embeddings into word embeddings
         source_word_repr = self._pool_word_embeddings(outputs, source_word_ids)
         target_word_repr = self._pool_word_embeddings(outputs, target_word_ids)
+        print(
+            f"Source word representation shapes (after word pooling): {source_word_repr.shape}"
+        )
+        print(
+            f"Target word representation shapes (after word pooling): {target_word_repr.shape}"
+        )
+        print("-" * 50)
 
         S = source_word_repr.shape[1]  # source_word_repr has shape (B, S, H)
         T = target_word_repr.shape[1]
@@ -48,10 +66,9 @@ class BinaryTokenClassificationModel(nn.Module):
         target_exp = target_exp.expand(B, S, T, H)
 
         combined = torch.cat([source_exp, target_exp], dim=-1)  # (B, S, T, 2H)
-        logits = self.classifier(
-            self.dropout(combined).squeeze(-1)
-        )  # (B, S, T, 1) -> (B, S, T)
-
+        print(f"Combined logits shape: {combined.shape}")
+        logits = self.classifier(self.dropout(combined)).squeeze(-1)
+        # (B, S, T, 1) -> (B, S, T)
         return logits
 
     @logger.catch(message="Model unable to pool embeddings", reraise=True)
@@ -61,24 +78,38 @@ class BinaryTokenClassificationModel(nn.Module):
         batched_word_ids: torch.Tensor,
         agg_fn: Callable = torch.mean,
     ) -> torch.Tensor:
-        """pools token embeddings to their corresponding word level"""
+        """
+        Pools token embeddings to their corresponding word level representations.
+        Inputs:
+            - outputs: (B, L, H) token-level embeddings
+            - batched_word_ids: (B, L) with word index per token or -1 for padding
+        Returns:
+            - (B, W, H): word-level embeddings padded across batch
+        """
         B, L, H = outputs.size()
         pooled = []
+
         for i in range(B):
             word_vectors = []
             current_word_id = None
             current_vecs = []
+
             for j, word_id in enumerate(batched_word_ids[i]):
-                if word_id is None:
-                    continue  # ignore separator tokens
+                word_id = word_id.item()
+                if word_id == -1:
+                    continue  # skip padding
+
                 if word_id != current_word_id:
                     if current_vecs:
                         word_vectors.append(agg_fn(torch.stack(current_vecs), dim=0))
                     current_vecs = []
                     current_word_id = word_id
+
                 current_vecs.append(outputs[i, j])
+
             if current_vecs:
                 word_vectors.append(agg_fn(torch.stack(current_vecs), dim=0))
+
             if word_vectors:
                 pooled.append(torch.stack(word_vectors))
             else:
