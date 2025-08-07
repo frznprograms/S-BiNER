@@ -47,8 +47,16 @@ class BinaryTokenClassificationModel(nn.Module):
         print("-" * 50)
 
         # pool token embeddings into word embeddings
-        source_word_repr = self._pool_word_embeddings(outputs, source_word_ids)
-        target_word_repr = self._pool_word_embeddings(outputs, target_word_ids)
+        source_word_repr = self._pool_word_embeddings(
+            outputs=outputs,
+            batched_word_ids=source_word_ids,
+            attention_mask=attention_mask,
+        )
+        target_word_repr = self._pool_word_embeddings(
+            outputs=outputs,
+            batched_word_ids=target_word_ids,
+            attention_mask=attention_mask,
+        )
         print(
             f"Source word representation shapes (after word pooling): {source_word_repr.shape}"
         )
@@ -71,51 +79,53 @@ class BinaryTokenClassificationModel(nn.Module):
         # (B, S, T, 1) -> (B, S, T)
         return logits
 
-    @logger.catch(message="Model unable to pool embeddings", reraise=True)
+    @logger.catch(message="Unable to pool embeddings properly", reraise=True)
     def _pool_word_embeddings(
         self,
-        outputs: torch.Tensor,
-        batched_word_ids: torch.Tensor,
+        outputs: torch.Tensor,  # (B, L, H)
+        batched_word_ids: torch.Tensor,  # (B, L)
+        attention_mask: torch.Tensor,  # (B, L)
         agg_fn: Callable = torch.mean,
     ) -> torch.Tensor:
-        """
-        Pools token embeddings to their corresponding word level representations.
-        Inputs:
-            - outputs: (B, L, H) token-level embeddings
-            - batched_word_ids: (B, L) with word index per token or -1 for padding
-        Returns:
-            - (B, W, H): word-level embeddings padded across batch
-        """
-        B, L, H = outputs.size()
-        pooled = []
+        B, L, H = outputs.shape
+        pooled_embeddings = []
 
         for i in range(B):
-            word_vectors = []
+            output = outputs[i]  # (L, H)
+            word_ids = batched_word_ids[i]  # (L,)
+            mask = attention_mask[i]  # (L,)
+
+            word_embeddings = []
             current_word_id = None
-            current_vecs = []
+            current_vectors = []
 
-            for j, word_id in enumerate(batched_word_ids[i]):
-                word_id = word_id.item()
-                if word_id == -1:
-                    continue  # skip padding
+            for j in range(L):
+                if mask[j] == 0:
+                    continue  # Skip padding
 
-                if word_id != current_word_id:
-                    if current_vecs:
-                        word_vectors.append(agg_fn(torch.stack(current_vecs), dim=0))
-                    current_vecs = []
-                    current_word_id = word_id
+                if word_ids[j] == -1:
+                    # Special token – treat as its own pooled embedding
+                    word_embeddings.append(output[j])
+                    continue
 
-                current_vecs.append(outputs[i, j])
+                if word_ids[j] != current_word_id:
+                    # start a new word span
+                    if current_vectors:
+                        word_embeddings.append(
+                            agg_fn(torch.stack(current_vectors), dim=0)
+                        )
+                    current_vectors = [output[j]]
+                    current_word_id = word_ids[j]
+                else:
+                    current_vectors.append(output[j])
 
-            if current_vecs:
-                word_vectors.append(agg_fn(torch.stack(current_vecs), dim=0))
+            # Final word
+            if current_vectors:
+                word_embeddings.append(agg_fn(torch.stack(current_vectors), dim=0))
 
-            if word_vectors:
-                pooled.append(torch.stack(word_vectors))
-            else:
-                pooled.append(torch.zeros(1, H, device=outputs.device))
+            pooled_embeddings.append(torch.stack(word_embeddings))
 
-        return nn.utils.rnn.pad_sequence(pooled, batch_first=True)
+        return nn.utils.rnn.pad_sequence(pooled_embeddings, batch_first=True)
 
     def apply_mask(self, sequence_output, mask: torch.BoolTensor):
         B, L, H = sequence_output.size()
