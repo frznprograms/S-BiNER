@@ -78,6 +78,7 @@ class AlignmentTrainer:
     @logger.catch(message="Failed to complete training.", reraise=True)
     def run(self):
         optimizer, scheduler, number_of_steps = self._init_training_utils()
+        return
 
         # Prepare everything with accelerator
         logger.debug("Accelerator preparing training components...")
@@ -138,7 +139,7 @@ class AlignmentTrainer:
                 target_token_to_word_mapping = batch["target_word_ids"].to(
                     self.user_defined_device
                 )
-                labels = batch["labels"].to(self.user_defined_device)
+                labels = batch["label_matrix"].to(self.user_defined_device)
                 print(f"Labels shape: {labels.shape}")
                 label_mask = batch["label_mask"].to(self.user_defined_device).float()
                 print(f"Label mask shape: {label_mask.shape}")
@@ -256,6 +257,11 @@ class AlignmentTrainer:
             self.train_data.data,  # type: ignore
             **self.dataloader_config,  # type:ignore
         )
+        di = iter(self.train_dataloader)
+        entry = next(di)
+        for key, value in entry.items():
+            print(f"{key}: {value.shape}")
+        return
 
         # calculate training steps using the actual dataloader length
         number_of_steps = (
@@ -392,7 +398,8 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=1000,
+        limit=1,
+        debug_mode=False,
     )
     # eval_dataset_config = DatasetConfig(
     #     source_lines_path="data/cleaned_data/dev.src",

@@ -230,6 +230,10 @@ class AlignmentPairDataset(Dataset):
             target_encoding, len(target_lines)
         )
 
+        self._view_tokens(
+            source_input_ids=source_input_ids, target_input_ids=target_input_ids
+        )
+
         if self.debug_mode:
             # all debugging functions were designed to take batches, even if batch_size=1
             self._view_tokens(
@@ -448,7 +452,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=2,
+        limit=1,
         debug_mode=False,
     )
     dataloader_config = DataLoaderConfig()  # just use default batch_size=4

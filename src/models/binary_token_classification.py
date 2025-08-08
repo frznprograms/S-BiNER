@@ -47,36 +47,32 @@ class BinaryTokenClassificationModel(nn.Module):
         print("-" * 50)
 
         # pool token embeddings into word embeddings
-        source_word_repr = self._pool_word_embeddings(
+        combined_word_ids = torch.cat((source_word_ids, target_word_ids), dim=1)
+        pooled_output_ids = self._pool_word_embeddings(
             outputs=outputs,
-            batched_word_ids=source_word_ids,
+            batched_word_ids=combined_word_ids,
             attention_mask=attention_mask,
         )
-        target_word_repr = self._pool_word_embeddings(
-            outputs=outputs,
-            batched_word_ids=target_word_ids,
-            attention_mask=attention_mask,
-        )
-        print(
-            f"Source word representation shapes (after word pooling): {source_word_repr.shape}"
-        )
-        print(
-            f"Target word representation shapes (after word pooling): {target_word_repr.shape}"
-        )
-        print("-" * 50)
+        # combined_word_ids shape: (B, W_total)
+        # pooled_output_ids shape: (B, W_total, H)
+        print(f"Combined word ids shape: {combined_word_ids.shape}")
 
-        S = source_word_repr.shape[1]  # source_word_repr has shape (B, S, H)
-        T = target_word_repr.shape[1]
+        pooled_exp_source = pooled_output_ids.unsqueeze(2)  # (B, W_total, 1, H)
+        pooled_exp_target = pooled_output_ids.unsqueeze(1)  # (B, 1, W_total, H)
+        W = pooled_output_ids.shape[1]
+        pooled_exp_source, pooled_exp_target = (
+            pooled_exp_source.expand(B, W, W, H),
+            pooled_exp_target.expand(B, W, W, H),
+        )
+        pairwise_classifier_inputs = torch.cat(
+            (pooled_exp_source, pooled_exp_target), dim=-1
+        )
+        print(f"Pairwise tensor shape: {pairwise_classifier_inputs.shape}")
+        # pairwise shape: (B, W, W, 2H)
+        logits = self.classifier(self.dropout(pairwise_classifier_inputs)).squeeze(-1)
+        print(f"Logits shape: {logits.shape}")
+        # logits shape: (B, W, W)
 
-        source_exp = source_word_repr.unsqueeze(2)  # (B, S, 1, H)
-        source_exp = source_exp.expand(B, S, T, H)
-        target_exp = target_word_repr.unsqueeze(1)  # (B, 1, T, H)
-        target_exp = target_exp.expand(B, S, T, H)
-
-        combined = torch.cat([source_exp, target_exp], dim=-1)  # (B, S, T, 2H)
-        print(f"Combined logits shape: {combined.shape}")
-        logits = self.classifier(self.dropout(combined)).squeeze(-1)
-        # (B, S, T, 1) -> (B, S, T)
         return logits
 
     @logger.catch(message="Unable to pool embeddings properly", reraise=True)
