@@ -222,13 +222,6 @@ class AlignmentPairDataset(Dataset):
             alignments_list=prepped_alignments,
         )
 
-        # source_token_to_word_mapping = [
-        #    source_encoding.word_ids(batch_index=i) for i in range(len(source_lines))
-        # ]
-        # target_token_to_word_mapping = [
-        #    target_encoding.word_ids(batch_index=i) for i in range(len(target_lines))
-        # ]
-
         # Get word mappings and pad them to match the tokenized sequence length
         source_token_to_word_mapping = self._prepare_word_mappings(
             source_encoding, len(source_lines)
@@ -455,7 +448,8 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=4,
+        limit=2,
+        debug_mode=False,
     )
     dataloader_config = DataLoaderConfig()  # just use default batch_size=4
 
@@ -467,4 +461,9 @@ if __name__ == "__main__":
         **train_dataset_config.__dict__,
         dataloader_config=dataloader_config,
     )
+    print("=" * 50)
+    generated_data = d.data
+    for elem in generated_data:
+        for key, value in elem.items():
+            print(f"{key}: {value.shape}")
     print("=" * 50)
