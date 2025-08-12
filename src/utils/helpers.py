@@ -71,6 +71,12 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> int:
     return seed_num
 
 
+def get_unique_words_from_mapping(word_ids_1d: torch.Tensor) -> int:
+    # since we know that special and padding tokens are always encoded as -1,
+    # we can simply take the number of unique ids - 1
+    return torch.unique(word_ids_1d).shape[0] - 1
+
+
 def create_collate_fn(tokenizer: PreTrainedTokenizer):
     def collate_fn(batch):
         input_ids = pad_sequence(
@@ -85,14 +91,22 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
         )
 
         # Determine true word counts from mappings (excluding padding)
-        max_src_len = max(
-            len(set(w for w in b["source_token_to_word_mapping"] if w != -1))
-            for b in batch
-        )
-        max_tgt_len = max(
-            len(set(w for w in b["target_token_to_word_mapping"] if w != -1))
-            for b in batch
-        )
+        src_word_counts, tgt_word_counts = [], []
+        src_token_lengths, tgt_token_lengths = [], []
+        for b in batch:
+            sw = b["source_token_to_word_mapping"]
+            tw = b["target_token_to_word_mapping"]
+            source_word_count = get_unique_words_from_mapping(sw)
+            target_word_count = get_unique_words_from_mapping(tw)
+            src_word_counts.append(source_word_count)
+            tgt_word_counts.append(target_word_count)
+            src_token_lengths.append(sw.shape[0])
+            tgt_token_lengths.append(tw.shape[0])
+
+        max_src_len = max(src_word_counts)
+        max_tgt_len = max(tgt_word_counts)
+        src_token_lengths = torch.tensor(src_token_lengths)
+        tgt_token_lengths = torch.tensor(tgt_token_lengths)
 
         # Pad label matrix and label mask
         padded_labels = []
@@ -102,32 +116,28 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
             padded = torch.zeros((max_src_len, max_tgt_len), dtype=label.dtype)
             mask = torch.zeros((max_src_len, max_tgt_len), dtype=torch.bool)
 
-            clip_src = min(label.shape[0], max_src_len)
-            clip_tgt = min(label.shape[1], max_tgt_len)
-
-            padded[:clip_src, :clip_tgt] = label[:clip_src, :clip_tgt]
-            mask[:clip_src, :clip_tgt] = 1
-
+            Si, Ti = label.shape
+            padded[:Si, :Ti] = label
+            mask[:Si, :Ti] = 1
             padded_labels.append(padded)
             label_masks.append(mask)
 
         labels = torch.stack(padded_labels)
         label_mask = torch.stack(label_masks)
 
-        # Word ID mapping (already created in dataset; now pad them)
-        source_word_ids = [
-            b["source_token_to_word_mapping"].detach().clone() for b in batch
-        ]
-        target_word_ids = [
-            b["target_token_to_word_mapping"].detach().clone() for b in batch
-        ]
+        # this will allow the model to split the relevant parts for
+        # source and target
         source_word_ids = pad_sequence(
-            source_word_ids, batch_first=True, padding_value=-1
-        )
-        target_word_ids = pad_sequence(
-            target_word_ids, batch_first=True, padding_value=-1
+            [b["source_token_to_word_mapping"].detach().clone() for b in batch],
+            batch_first=True,
+            padding_value=-1,
         )
 
+        target_word_ids = pad_sequence(
+            [b["target_token_to_word_mapping"].detach().clone() for b in batch],
+            batch_first=True,
+            padding_value=-1,
+        )
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
@@ -135,6 +145,8 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
             "label_mask": label_mask,
             "source_word_ids": source_word_ids,
             "target_word_ids": target_word_ids,
+            "source_token_lengths": src_token_lengths,
+            "target_token_lengths": tgt_token_lengths,
         }
 
     return collate_fn

@@ -398,8 +398,8 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=1,
-        debug_mode=False,
+        limit=2,
+        debug_mode=True,
     )
     # eval_dataset_config = DatasetConfig(
     #     source_lines_path="data/cleaned_data/dev.src",

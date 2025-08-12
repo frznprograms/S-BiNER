@@ -8,6 +8,8 @@ from transformers import (
 from src.configs.model_config import ModelConfig
 from loguru import logger
 
+from src.utils.helpers import get_unique_words_from_mapping
+
 
 class BinaryTokenClassificationModel(nn.Module):
     def __init__(
@@ -25,6 +27,7 @@ class BinaryTokenClassificationModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
+        label_masks: torch.Tensor,
         source_word_ids: torch.Tensor,
         target_word_ids: torch.Tensor,
     ):
@@ -57,21 +60,43 @@ class BinaryTokenClassificationModel(nn.Module):
         # pooled_output_ids shape: (B, W_total, H)
         print(f"Combined word ids shape: {combined_word_ids.shape}")
 
-        pooled_exp_source = pooled_output_ids.unsqueeze(2)  # (B, W_total, 1, H)
-        pooled_exp_target = pooled_output_ids.unsqueeze(1)  # (B, 1, W_total, H)
-        W = pooled_output_ids.shape[1]
-        pooled_exp_source, pooled_exp_target = (
-            pooled_exp_source.expand(B, W, W, H),
-            pooled_exp_target.expand(B, W, W, H),
+        # now that we have the pooled embeddings (which matches the number
+        # of words in the sentence)
+        pooled_src_embed, pooled_tgt_embed = [], []
+        src_lengths, tgt_lengths = [], []
+        for i in range(B):
+            actual_no_of_src_words = get_unique_words_from_mapping(source_word_ids[i])
+            actual_no_of_tgt_words = get_unique_words_from_mapping(target_word_ids[i])
+            src_lengths.append(actual_no_of_src_words)
+            tgt_lengths.append(actual_no_of_tgt_words)
+            single_pooled_emb = pooled_output_ids[i]
+            relevant_src_emb = single_pooled_emb[1:actual_no_of_src_words]
+            relevant_tgt_emb = single_pooled_emb[
+                actual_no_of_src_words + 1 : actual_no_of_tgt_words
+            ]
+            pooled_src_embed.append(relevant_src_emb)
+            pooled_tgt_embed.append(relevant_tgt_emb)
+
+        max_src_length = max(src_lengths)
+        max_tgt_length = max(tgt_lengths)
+        pooled_src_emb = (
+            torch.tensor(pooled_src_embed)
+            .unsqueeze(2)
+            .expand(B, max_src_length, max_tgt_length)
         )
-        pairwise_classifier_inputs = torch.cat(
-            (pooled_exp_source, pooled_exp_target), dim=-1
+        pooled_tgt_emb = (
+            torch.tensor(pooled_tgt_embed)
+            .unsqueeze(1)
+            .expand(B, max_src_length, max_tgt_length)
         )
+
+        pairwise_classifier_inputs = torch.cat((pooled_src_emb, pooled_tgt_emb), dim=-1)
         print(f"Pairwise tensor shape: {pairwise_classifier_inputs.shape}")
-        # pairwise shape: (B, W, W, 2H)
         logits = self.classifier(self.dropout(pairwise_classifier_inputs)).squeeze(-1)
+
+        # should the label mask even be utilised?
+
         print(f"Logits shape: {logits.shape}")
-        # logits shape: (B, W, W)
 
         return logits
 
@@ -130,40 +155,3 @@ class BinaryTokenClassificationModel(nn.Module):
             indices = mask[i].nonzero(as_tuple=True)[0]
             token_lists.append(sequence_output[i, indices, :])
         return nn.utils.rnn.pad_sequence(token_lists, batch_first=True)
-
-
-# @dataclass
-# class SpanTokenAlignerOutput:
-#     logits: Optional[torch.Tensor] = None
-#     loss: Optional[torch.Tensor] = None
-
-
-# class BinaryTokenClassification(nn.Module):
-#     classifier: nn.Linear
-#     dropout: nn.Dropout
-
-#     def forward(
-#         self,
-#         model: Union[RobertaPreTrainedModel, XLMRobertaPreTrainedModel],
-#         input_ids: torch.Tensor,
-#         attention_mask: torch.Tensor,
-#         labels: Optional[torch.Tensor] = None,
-#     ) -> SpanTokenAlignerOutput:
-#         last_hidden_state: torch.Tensor = model(
-#             input_ids, attention_mask=attention_mask
-#         )[0]  # shape is (batch_size, seq_len, hidden_layer_dim=768)
-#         logits = self.classifier(self.dropout(last_hidden_state)).to(torch.float32)
-
-#         loss = None
-#         if labels is not None:  # i.e. only for training, not inference
-#             new_labels = torch.where(labels == -100, 0.0, labels)
-#             # return loss for each individual token; no averaging yet:
-#             loss_func = nn.BCEWithLogitsLoss(reduction="none")
-#             loss = loss_func(logits.view(-1), new_labels.view(-1))
-#             # zero out loss for ignored tokens:
-#             loss = torch.where(labels.view(-1) == -100, 0, loss)
-
-#             # average loss over valid tokens:
-#             loss = torch.sum(loss) / (labels != -100).sum()
-
-#         return SpanTokenAlignerOutput(loss=loss, logits=logits)
