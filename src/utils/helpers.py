@@ -105,8 +105,6 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
 
         max_src_len = max(src_word_counts)
         max_tgt_len = max(tgt_word_counts)
-        src_token_lengths = torch.tensor(src_token_lengths)
-        tgt_token_lengths = torch.tensor(tgt_token_lengths)
 
         # Pad label matrix and label mask
         padded_labels = []
@@ -145,8 +143,6 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
             "label_mask": label_mask,
             "source_word_ids": source_word_ids,
             "target_word_ids": target_word_ids,
-            "source_token_lengths": src_token_lengths,
-            "target_token_lengths": tgt_token_lengths,
         }
 
     return collate_fn
