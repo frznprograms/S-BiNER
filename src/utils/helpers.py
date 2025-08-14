@@ -73,8 +73,13 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> int:
 
 def get_unique_words_from_mapping(word_ids_1d: torch.Tensor) -> int:
     # since we know that special and padding tokens are always encoded as -1,
-    # we can simply take the number of unique ids - 1
-    return torch.unique(word_ids_1d).shape[0] - 1
+    # we can just ignore these when we count unique words
+    valid = word_ids_1d[word_ids_1d >= 0]
+    return int(valid.max().item() + 1) if valid.numel() else 0
+
+
+# TODO: find out why we need to do .max().item() + 1 and what .numel() does
+# TODO: look at dataset class - are special and padding tokens really encoded all as -1
 
 
 def create_collate_fn(tokenizer: PreTrainedTokenizer):
@@ -85,57 +90,46 @@ def create_collate_fn(tokenizer: PreTrainedTokenizer):
             padding_value=tokenizer.pad_token_id,  # type: ignore
         )
         attention_mask = pad_sequence(
-            [b["attention_mask"] for b in batch],
-            batch_first=True,
-            padding_value=0,
+            [b["attention_mask"] for b in batch], batch_first=True, padding_value=0
         )
 
-        # Determine true word counts from mappings (excluding padding)
-        src_word_counts, tgt_word_counts = [], []
-        src_token_lengths, tgt_token_lengths = [], []
+        src_counts = [
+            get_unique_words_from_mapping(b["source_token_to_word_mapping"])
+            for b in batch
+        ]
+        tgt_counts = [
+            get_unique_words_from_mapping(b["target_token_to_word_mapping"])
+            for b in batch
+        ]
+        max_S = max(src_counts) if src_counts else 0
+        max_T = max(tgt_counts) if tgt_counts else 0
+
+        # pad labels + mask
+        padded_labels, padded_masks = [], []
         for b in batch:
-            sw = b["source_token_to_word_mapping"]
-            tw = b["target_token_to_word_mapping"]
-            source_word_count = get_unique_words_from_mapping(sw)
-            target_word_count = get_unique_words_from_mapping(tw)
-            src_word_counts.append(source_word_count)
-            tgt_word_counts.append(target_word_count)
-            src_token_lengths.append(sw.shape[0])
-            tgt_token_lengths.append(tw.shape[0])
+            L = b["label_matrix"]  # (S_i, T_i)
+            S_i, T_i = L.shape
+            P = torch.zeros((max_S, max_T), dtype=L.dtype)
+            M = torch.zeros((max_S, max_T), dtype=torch.bool)
+            P[:S_i, :T_i] = L
+            M[:S_i, :T_i] = True
+            padded_labels.append(P)
+            padded_masks.append(M)
 
-        max_src_len = max(src_word_counts)
-        max_tgt_len = max(tgt_word_counts)
+        labels = torch.stack(padded_labels)  # (B, max_S, max_T)
+        label_mask = torch.stack(padded_masks)  # (B, max_S, max_T)
 
-        # Pad label matrix and label mask
-        padded_labels = []
-        label_masks = []
-        for b in batch:
-            label = b["label_matrix"]
-            padded = torch.zeros((max_src_len, max_tgt_len), dtype=label.dtype)
-            mask = torch.zeros((max_src_len, max_tgt_len), dtype=torch.bool)
-
-            Si, Ti = label.shape
-            padded[:Si, :Ti] = label
-            mask[:Si, :Ti] = 1
-            padded_labels.append(padded)
-            label_masks.append(mask)
-
-        labels = torch.stack(padded_labels)
-        label_mask = torch.stack(label_masks)
-
-        # this will allow the model to split the relevant parts for
-        # source and target
         source_word_ids = pad_sequence(
-            [b["source_token_to_word_mapping"].detach().clone() for b in batch],
+            [b["source_token_to_word_mapping"] for b in batch],
+            batch_first=True,
+            padding_value=-1,
+        )
+        target_word_ids = pad_sequence(
+            [b["target_token_to_word_mapping"] for b in batch],
             batch_first=True,
             padding_value=-1,
         )
 
-        target_word_ids = pad_sequence(
-            [b["target_token_to_word_mapping"].detach().clone() for b in batch],
-            batch_first=True,
-            padding_value=-1,
-        )
         return {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
