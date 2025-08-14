@@ -3,12 +3,10 @@ import random
 from typing import Any, Optional, Union
 
 import torch
-from torch.nn.utils.rnn import pad_sequence
 import wandb
 import yaml
 from easydict import EasyDict
 from loguru import logger
-from transformers.tokenization_utils import PreTrainedTokenizer
 
 
 def delist_the_list(items: list):
@@ -69,77 +67,6 @@ def set_seeds(seed_num: Optional[int], deterministic: bool = True) -> int:
         torch.backends.cudnn.benchmark = False
 
     return seed_num
-
-
-def get_unique_words_from_mapping(word_ids_1d: torch.Tensor) -> int:
-    # since we know that special and padding tokens are always encoded as -1,
-    # we can just ignore these when we count unique words
-    valid = word_ids_1d[word_ids_1d >= 0]
-    return int(valid.max().item() + 1) if valid.numel() else 0
-
-
-# TODO: find out why we need to do .max().item() + 1 and what .numel() does
-# TODO: look at dataset class - are special and padding tokens really encoded all as -1
-
-
-def create_collate_fn(tokenizer: PreTrainedTokenizer):
-    def collate_fn(batch):
-        input_ids = pad_sequence(
-            [b["input_ids"] for b in batch],
-            batch_first=True,
-            padding_value=tokenizer.pad_token_id,  # type: ignore
-        )
-        attention_mask = pad_sequence(
-            [b["attention_mask"] for b in batch], batch_first=True, padding_value=0
-        )
-
-        src_counts = [
-            get_unique_words_from_mapping(b["source_token_to_word_mapping"])
-            for b in batch
-        ]
-        tgt_counts = [
-            get_unique_words_from_mapping(b["target_token_to_word_mapping"])
-            for b in batch
-        ]
-        max_S = max(src_counts) if src_counts else 0
-        max_T = max(tgt_counts) if tgt_counts else 0
-
-        # pad labels + mask
-        padded_labels, padded_masks = [], []
-        for b in batch:
-            L = b["label_matrix"]  # (S_i, T_i)
-            S_i, T_i = L.shape
-            P = torch.zeros((max_S, max_T), dtype=L.dtype)
-            M = torch.zeros((max_S, max_T), dtype=torch.bool)
-            P[:S_i, :T_i] = L
-            M[:S_i, :T_i] = True
-            padded_labels.append(P)
-            padded_masks.append(M)
-
-        labels = torch.stack(padded_labels)  # (B, max_S, max_T)
-        label_mask = torch.stack(padded_masks)  # (B, max_S, max_T)
-
-        source_word_ids = pad_sequence(
-            [b["source_token_to_word_mapping"] for b in batch],
-            batch_first=True,
-            padding_value=-1,
-        )
-        target_word_ids = pad_sequence(
-            [b["target_token_to_word_mapping"] for b in batch],
-            batch_first=True,
-            padding_value=-1,
-        )
-
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-            "label_mask": label_mask,
-            "source_word_ids": source_word_ids,
-            "target_word_ids": target_word_ids,
-        }
-
-    return collate_fn
 
 
 @logger.catch(message="Unable to parse an alignment.", reraise=True)

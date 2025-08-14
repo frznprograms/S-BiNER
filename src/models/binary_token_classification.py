@@ -1,14 +1,14 @@
 from typing import Callable, Union
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
 from transformers import (
     RobertaPreTrainedModel,
     XLMRobertaPreTrainedModel,
 )
+from transformers.tokenization_utils import PreTrainedTokenizer
 from src.configs.model_config import ModelConfig
 from loguru import logger
-
-from src.utils.helpers import get_unique_words_from_mapping
 
 
 class BinaryTokenClassificationModel(nn.Module):
@@ -27,77 +27,45 @@ class BinaryTokenClassificationModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        label_masks: torch.Tensor,
         source_word_ids: torch.Tensor,
         target_word_ids: torch.Tensor,
     ):
-        # note that input_ids have shape (B, L)
-        # get token-level hidden states
-        outputs = self.encoder(
+        tok_h = self.encoder(
             input_ids=input_ids, attention_mask=attention_mask
         ).last_hidden_state  # (B, L, H)
-        B, L, H = outputs.shape
+        B, L, H = tok_h.shape
 
-        print("-" * 50)
-        print("Debugging how the model processes the tensors...")
-        print("-" * 50)
-        print(f"Input_id shapes: {input_ids.shape}")
-        print(f"Attention mask shape: {attention_mask.shape}")
-        print(f"Source word ids shape: {source_word_ids.shape}")
-        print(f"Target word ids shape: {target_word_ids.shape}")
-        print("-" * 50)
-        print(f"Model outputs shape: {outputs.shape}")
-        print("-" * 50)
-
-        # pool token embeddings into word embeddings
-        combined_word_ids = torch.cat((source_word_ids, target_word_ids), dim=1)
+        combined_word_ids = torch.cat(
+            (source_word_ids, target_word_ids), dim=1
+        )  # (B, L)
         pooled_output_ids = self._pool_word_embeddings(
-            outputs=outputs,
+            outputs=tok_h,
             batched_word_ids=combined_word_ids,
-            attention_mask=attention_mask,
-        )
-        # combined_word_ids shape: (B, W_total)
-        # pooled_output_ids shape: (B, W_total, H)
-        print(f"Combined word ids shape: {combined_word_ids.shape}")
+            attention_mask=attention_mask.bool(),  # ← bool mask
+        )  # (B, W_max, H)
 
-        # now that we have the pooled embeddings (which matches the number
-        # of words in the sentence)
-        pooled_src_embed, pooled_tgt_embed = [], []
-        src_lengths, tgt_lengths = [], []
-        for i in range(B):
-            actual_no_of_src_words = get_unique_words_from_mapping(source_word_ids[i])
-            actual_no_of_tgt_words = get_unique_words_from_mapping(target_word_ids[i])
-            src_lengths.append(actual_no_of_src_words)
-            tgt_lengths.append(actual_no_of_tgt_words)
-            single_pooled_emb = pooled_output_ids[i]
-            relevant_src_emb = single_pooled_emb[1:actual_no_of_src_words]
-            relevant_tgt_emb = single_pooled_emb[
-                actual_no_of_src_words + 1 : actual_no_of_tgt_words
-            ]
-            pooled_src_embed.append(relevant_src_emb)
-            pooled_tgt_embed.append(relevant_tgt_emb)
-
-        max_src_length = max(src_lengths)
-        max_tgt_length = max(tgt_lengths)
-        pooled_src_emb = (
-            torch.tensor(pooled_src_embed)
-            .unsqueeze(2)
-            .expand(B, max_src_length, max_tgt_length)
-        )
-        pooled_tgt_emb = (
-            torch.tensor(pooled_tgt_embed)
-            .unsqueeze(1)
-            .expand(B, max_src_length, max_tgt_length)
+        # counts & maxima
+        source_counts_list, target_counts_list, max_source_length, max_target_length = (
+            self.compute_word_counts(source_word_ids, target_word_ids)
         )
 
-        pairwise_classifier_inputs = torch.cat((pooled_src_emb, pooled_tgt_emb), dim=-1)
-        print(f"Pairwise tensor shape: {pairwise_classifier_inputs.shape}")
-        logits = self.classifier(self.dropout(pairwise_classifier_inputs)).squeeze(-1)
+        # split pooled words into src/tgt and pad to (S_max, T_max)
+        pooled_src_emb, pooled_tgt_emb = self.split_and_pad_src_tgt_words(
+            pooled_output_ids=pooled_output_ids,
+            source_counts_list=source_counts_list,
+            target_counts_list=target_counts_list,
+            max_source_length=max_source_length,
+            max_target_length=max_target_length,
+        )  # (B, S_max, H), (B, T_max, H)
 
-        # should the label mask even be utilised?
+        # cross pairs
+        # (B, S_max, T_max, H)
+        src_exp = pooled_src_emb.unsqueeze(2).expand(-1, -1, max_target_length, -1)
+        # (B, S_max, T_max, H)
+        tgt_exp = pooled_tgt_emb.unsqueeze(1).expand(-1, max_source_length, -1, -1)
+        pair = torch.cat([src_exp, tgt_exp], dim=-1)  # (B, S_max, T_max, 2H)
 
-        print(f"Logits shape: {logits.shape}")
-
+        logits = self.classifier(self.dropout(pair)).squeeze(-1)  # (B, S_max, T_max)
         return logits
 
     @logger.catch(message="Unable to pool embeddings properly", reraise=True)
@@ -105,48 +73,50 @@ class BinaryTokenClassificationModel(nn.Module):
         self,
         outputs: torch.Tensor,  # (B, L, H)
         batched_word_ids: torch.Tensor,  # (B, L)
-        attention_mask: torch.Tensor,  # (B, L)
+        attention_mask: torch.Tensor,  # (B, L)  **BOOL**
         agg_fn: Callable = torch.mean,
     ) -> torch.Tensor:
         B, L, H = outputs.shape
         pooled_embeddings = []
 
         for i in range(B):
-            output = outputs[i]  # (L, H)
-            word_ids = batched_word_ids[i]  # (L,)
-            mask = attention_mask[i]  # (L,)
-
-            word_embeddings = []
-            current_word_id = None
-            current_vectors = []
+            out_i = outputs[i]  # (L, H)
+            wid_i = batched_word_ids[i]  # (L,)
+            msk_i = attention_mask[i]  # (L,), bool
+            word_embs, current_id, buf = [], None, []
 
             for j in range(L):
-                if mask[j] == 0:
-                    continue  # Skip padding
+                if not msk_i[j]:
+                    continue  # skip padded tokens
 
-                if word_ids[j] == -1:
-                    # Special token – treat as its own pooled embedding
-                    word_embeddings.append(output[j])
+                wid = int(wid_i[j].item())
+                if wid == -1:
+                    # skip specials/pad entirely (do not append an embedding)
+                    if buf:
+                        word_embs.append(agg_fn(torch.stack(buf), dim=0))
+                        buf = []
+                    current_id = None
                     continue
 
-                if word_ids[j] != current_word_id:
-                    # start a new word span
-                    if current_vectors:
-                        word_embeddings.append(
-                            agg_fn(torch.stack(current_vectors), dim=0)
-                        )
-                    current_vectors = [output[j]]
-                    current_word_id = word_ids[j]
+                if current_id is None or wid != current_id:
+                    if buf:
+                        word_embs.append(agg_fn(torch.stack(buf), dim=0))
+                    buf = [out_i[j]]
+                    current_id = wid
                 else:
-                    current_vectors.append(output[j])
+                    buf.append(out_i[j])
 
-            # Final word
-            if current_vectors:
-                word_embeddings.append(agg_fn(torch.stack(current_vectors), dim=0))
+            if buf:
+                word_embs.append(agg_fn(torch.stack(buf), dim=0))
+            if not word_embs:
+                # ensure at least one row so pad_sequence works
+                word_embs = [out_i.new_zeros(H)]
 
-            pooled_embeddings.append(torch.stack(word_embeddings))
+            pooled_embeddings.append(torch.stack(word_embs))  # (W_i, H)
 
-        return nn.utils.rnn.pad_sequence(pooled_embeddings, batch_first=True)
+        return nn.utils.rnn.pad_sequence(
+            pooled_embeddings, batch_first=True
+        )  # (B, W_max, H)
 
     def apply_mask(self, sequence_output, mask: torch.BoolTensor):
         B, L, H = sequence_output.size()
@@ -155,3 +125,148 @@ class BinaryTokenClassificationModel(nn.Module):
             indices = mask[i].nonzero(as_tuple=True)[0]
             token_lists.append(sequence_output[i, indices, :])
         return nn.utils.rnn.pad_sequence(token_lists, batch_first=True)
+
+    def compute_word_counts(
+        self,
+        source_word_ids: torch.Tensor,
+        target_word_ids: torch.Tensor,
+    ) -> tuple[list[int], list[int], int, int]:
+        B = source_word_ids.shape[0]
+        source_counts_list = [
+            get_unique_words_from_mapping(source_word_ids[i]) for i in range(B)
+        ]
+        target_counts_list = [
+            get_unique_words_from_mapping(target_word_ids[i]) for i in range(B)
+        ]
+        max_source_length = max(source_counts_list) if source_counts_list else 0
+        max_target_length = max(target_counts_list) if target_counts_list else 0
+
+        return (
+            source_counts_list,
+            target_counts_list,
+            max_source_length,
+            max_target_length,
+        )
+
+    def split_and_pad_src_tgt_words(
+        self,
+        pooled_output_ids: torch.Tensor,  # (B, W_max, H)
+        source_counts_list: list[int],
+        target_counts_list: list[int],
+        max_source_length: int,
+        max_target_length: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        B, _, H = pooled_output_ids.shape
+        src_list, tgt_list = [], []
+
+        for i in range(B):
+            S_i = source_counts_list[i]
+            T_i = target_counts_list[i]
+
+            # pooled_output_ids[i] is [src_words || tgt_words] because we pooled after
+            # concatenating source_word_ids then target_word_ids
+            if S_i > 0:
+                src_i = pooled_output_ids[i, :S_i]  # (S_i, H)
+            else:
+                src_i = pooled_output_ids.new_zeros((1, H))  # keep a row for padding
+
+            if T_i > 0:
+                tgt_i = pooled_output_ids[i, S_i : S_i + T_i]  # (T_i, H)
+            else:
+                tgt_i = pooled_output_ids.new_zeros((1, H))
+
+            src_list.append(src_i)
+            tgt_list.append(tgt_i)
+
+        src_word_embs = nn.utils.rnn.pad_sequence(
+            src_list, batch_first=True
+        )  # (B, S_max′, H)
+        tgt_word_embs = nn.utils.rnn.pad_sequence(
+            tgt_list, batch_first=True
+        )  # (B, T_max′, H)
+
+        # If S_max′/T_max′ differ slightly from provided maxima (due to zeros), pad/truncate:
+        if src_word_embs.size(1) < max_source_length:
+            pad = src_word_embs.new_zeros(
+                (B, max_source_length - src_word_embs.size(1), H)
+            )
+            src_word_embs = torch.cat([src_word_embs, pad], dim=1)
+        else:
+            src_word_embs = src_word_embs[:, :max_source_length]
+
+        if tgt_word_embs.size(1) < max_target_length:
+            pad = tgt_word_embs.new_zeros(
+                (B, max_target_length - tgt_word_embs.size(1), H)
+            )
+            tgt_word_embs = torch.cat([tgt_word_embs, pad], dim=1)
+        else:
+            tgt_word_embs = tgt_word_embs[:, :max_target_length]
+
+        return src_word_embs, tgt_word_embs
+
+
+def get_unique_words_from_mapping(word_ids_1d: torch.Tensor) -> int:
+    # since we know that special and padding tokens are always encoded as -1,
+    # we can just ignore these when we count unique words
+    valid = word_ids_1d[word_ids_1d >= 0]
+    return int(valid.max().item() + 1) if valid.numel() else 0
+
+
+def create_collate_fn(tokenizer: PreTrainedTokenizer):
+    def collate_fn(batch):
+        input_ids = pad_sequence(
+            [b["input_ids"] for b in batch],
+            batch_first=True,
+            padding_value=tokenizer.pad_token_id,  # type: ignore
+        )
+        attention_mask = pad_sequence(
+            [b["attention_mask"] for b in batch], batch_first=True, padding_value=0
+        )
+
+        src_counts = [
+            get_unique_words_from_mapping(b["source_token_to_word_mapping"])
+            for b in batch
+        ]
+        tgt_counts = [
+            get_unique_words_from_mapping(b["target_token_to_word_mapping"])
+            for b in batch
+        ]
+        max_S = max(src_counts) if src_counts else 0
+        max_T = max(tgt_counts) if tgt_counts else 0
+
+        # pad labels + mask
+        padded_labels, padded_masks = [], []
+        for b in batch:
+            L = b["label_matrix"]  # (S_i, T_i)
+            S_i, T_i = L.shape
+            P = torch.zeros((max_S, max_T), dtype=L.dtype)
+            M = torch.zeros((max_S, max_T), dtype=torch.bool)
+            P[:S_i, :T_i] = L
+            M[:S_i, :T_i] = True
+            padded_labels.append(P)
+            padded_masks.append(M)
+
+        labels = torch.stack(padded_labels)  # (B, max_S, max_T)
+        label_mask = torch.stack(padded_masks)  # (B, max_S, max_T)
+
+        source_word_ids = pad_sequence(
+            [b["source_token_to_word_mapping"] for b in batch],
+            batch_first=True,
+            padding_value=-1,
+        )
+        target_word_ids = pad_sequence(
+            [b["target_token_to_word_mapping"] for b in batch],
+            batch_first=True,
+            padding_value=-1,
+        )
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "label_mask": label_mask,
+            "source_word_ids": source_word_ids,
+            "target_word_ids": target_word_ids,
+        }
+
+    return collate_fn

@@ -202,7 +202,7 @@ class AlignmentTrainer:
                 self.user_defined_device
             )
             labels = batch["labels"].to(self.user_defined_device)
-
+            # TODO: use label mask find masked loss, which ensures padding != wrong alignment
             logits = self.model(
                 input_ids,
                 attention_mask,
