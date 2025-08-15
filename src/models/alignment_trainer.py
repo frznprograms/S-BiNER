@@ -19,9 +19,9 @@ from src.configs.model_config import ModelConfig
 from src.configs.train_config import TrainConfig
 from src.datasets.alignment_pair_dataset import AlignmentPairDataset
 from src.models.binary_align_factory import BinaryTokenClassificationFactory
+from src.models.binary_token_classification import create_collate_fn
 from src.utils.decorators import timed_execution
 from src.utils.helpers import (
-    create_collate_fn,
     init_wandb_tracker,
     set_device,
     set_seeds,
@@ -78,7 +78,6 @@ class AlignmentTrainer:
     @logger.catch(message="Failed to complete training.", reraise=True)
     def run(self):
         optimizer, scheduler, number_of_steps = self._init_training_utils()
-        return
 
         # Prepare everything with accelerator
         logger.debug("Accelerator preparing training components...")
@@ -139,7 +138,7 @@ class AlignmentTrainer:
                 target_token_to_word_mapping = batch["target_word_ids"].to(
                     self.user_defined_device
                 )
-                labels = batch["label_matrix"].to(self.user_defined_device)
+                labels = batch["labels"].to(self.user_defined_device)
                 print(f"Labels shape: {labels.shape}")
                 label_mask = batch["label_mask"].to(self.user_defined_device).float()
                 print(f"Label mask shape: {label_mask.shape}")
@@ -257,11 +256,6 @@ class AlignmentTrainer:
             self.train_data.data,  # type: ignore
             **self.dataloader_config,  # type:ignore
         )
-        di = iter(self.train_dataloader)
-        entry = next(di)
-        for key, value in entry.items():
-            print(f"{key}: {value.shape}")
-        return
 
         # calculate training steps using the actual dataloader length
         number_of_steps = (
@@ -399,7 +393,7 @@ if __name__ == "__main__":
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
         limit=2,
-        debug_mode=True,
+        debug_mode=False,
     )
     # eval_dataset_config = DatasetConfig(
     #     source_lines_path="data/cleaned_data/dev.src",
