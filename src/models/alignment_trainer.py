@@ -175,7 +175,7 @@ class AlignmentTrainer:
             pbar.write(
                 f"Epoch {epoch + 1}: Avg Training masked loss = {avg_epoch_loss:.6f}"
             )
-            if self.eval_dataloader is not None:
+            if self.eval_data is not None:
                 avg_epoch_val_loss = self.evaluate()
                 pbar.write(
                     f"Epoch {epoch + 1}: Avg Validation masked loss = {avg_epoch_val_loss:.6f}"
