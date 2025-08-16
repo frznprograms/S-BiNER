@@ -309,17 +309,16 @@ class AlignmentPairDataset(Dataset):
             source_lines, target_lines, alignments_list
         ):
             # assume both source and target lines are already split into words
-            print(f"Source line for matrix formation: {source_line.split()}")
-            print(f"Target line for matrix formation: {target_line.split()}")
-            print(f"Length of source line (in words): {len(source_line.split())}")
-            print(f"Length of target line (in words): {len(target_line.split())}")
+            # print(f"Source line for matrix formation: {source_line.split()}")
+            # print(f"Target line for matrix formation: {target_line.split()}")
+            # print(f"Length of source line (in words): {len(source_line.split())}")
+            # print(f"Length of target line (in words): {len(target_line.split())}")
             source_dim = len(source_line.split())
             target_dim = len(target_line.split())
             label_matrix = torch.zeros((source_dim, target_dim), dtype=torch.float)
             for source_i, target_j in alignments:
                 if source_i < source_dim and target_j < target_dim:
                     label_matrix[source_i, target_j] = 1.0
-            print(f"Label matrix shape: {label_matrix.shape}")
             label_matrices.append(label_matrix)
 
         return label_matrices

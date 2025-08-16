@@ -68,16 +68,16 @@ class BinaryTokenClassificationModel(nn.Module):
         logits = self.classifier(self.dropout(pair)).squeeze(-1)  # (B, S_max, T_max)
 
         # analyse flow of tensor shapes
-        print(f"Token embedding shapes: {tok_h.shape}")
-        print(f"Combined word ids shape: {combined_word_ids}")
-        print(f"Pooled Output ids shape: {pooled_output_ids.shape}")
-        print(f"Max source sentence length: {max_source_length}")
-        print(f"Max target sentence length: {max_target_length}")
-        print(f"Pooled source embeddings shape: {pooled_src_emb.shape}")
-        print(f"Pooled target embeddings shape: {pooled_tgt_emb.shape}")
-        print(f"Expanded source side embeddings shape: {src_exp.shape}")
-        print(f"Expanded target side embeddings shape: {tgt_exp.shape}")
-        print(f"Final logits shape: {logits.shape}")
+        # print(f"Token embedding shapes: {tok_h.shape}")
+        # print(f"Combined word ids shape: {combined_word_ids}")
+        # print(f"Pooled Output ids shape: {pooled_output_ids.shape}")
+        # print(f"Max source sentence length: {max_source_length}")
+        # print(f"Max target sentence length: {max_target_length}")
+        # print(f"Pooled source embeddings shape: {pooled_src_emb.shape}")
+        # print(f"Pooled target embeddings shape: {pooled_tgt_emb.shape}")
+        # print(f"Expanded source side embeddings shape: {src_exp.shape}")
+        # print(f"Expanded target side embeddings shape: {tgt_exp.shape}")
+        # print(f"Final logits shape: {logits.shape}")
 
         return logits
 

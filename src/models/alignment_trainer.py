@@ -139,9 +139,7 @@ class AlignmentTrainer:
                     self.user_defined_device
                 )
                 labels = batch["labels"].to(self.user_defined_device)
-                print(f"Labels shape: {labels.shape}")
                 label_mask = batch["label_mask"].to(self.user_defined_device).float()
-                print(f"Label mask shape: {label_mask.shape}")
 
                 # Forward pass
                 logits = self.model(
@@ -150,11 +148,6 @@ class AlignmentTrainer:
                     source_token_to_word_mapping,
                     target_token_to_word_mapping,
                 )  # (B, S, T)
-
-                # Align label shape with logits
-                # B, S_pred, T_pred = logits.shape
-                # labels = labels[:, :S_pred, :T_pred]
-                # label_mask = label_mask[:, :S_pred, :T_pred]
 
                 assert logits.shape == labels.shape == label_mask.shape, (
                     f"Shape mismatch: logits {logits.shape}, labels {labels.shape}, label_mask {label_mask.shape}"
@@ -188,29 +181,7 @@ class AlignmentTrainer:
     @torch.no_grad
     @logger.catch(message="Failed to perform evaluation.", reraise=True)
     def evaluate(self):
-        # TODO: implement evaluation
-        self.model.eval()  # type: ignore
-        total_loss = 0.0
-        for batch in tqdm(self.eval_dataloader, desc="Running Validation"):
-            input_ids = batch["input_ids"].to(self.user_defined_device)
-            attention_mask = batch["attention_mask"].to(self.user_defined_device)
-            source_token_to_word_mapping = batch["source_word_ids"].to(
-                self.user_defined_device
-            )
-            target_token_to_word_mapping = batch["target_word_ids"].to(
-                self.user_defined_device
-            )
-            labels = batch["labels"].to(self.user_defined_device)
-            # TODO: use label mask find masked loss, which ensures padding != wrong alignment
-            logits = self.model(
-                input_ids,
-                attention_mask,
-                source_token_to_word_mapping,
-                target_token_to_word_mapping,
-            )  # type: ignore # (B, S, T)
-            loss = self.criterion(logits, labels)
-            total_loss += loss.item()
-            return total_loss / len(self.eval_dataloader)  # type: ignore
+        pass
 
     @logger.catch(message="Failed to initialise training utils", reraise=True)
     def _init_training_utils(self):
@@ -392,7 +363,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=2,
+        limit=10,
         debug_mode=False,
     )
     # eval_dataset_config = DatasetConfig(
