@@ -34,7 +34,8 @@ class AlignmentTrainer:
     model_config: ModelConfig
     train_config: TrainConfig
     dataset_config: DatasetConfig
-    dataloader_config: DataLoaderConfig
+    train_dataloader_config: DataLoaderConfig
+    eval_dataloader_config: DataLoaderConfig
     train_data: AlignmentPairDataset
     eval_data: Optional[AlignmentPairDataset] = None
     device_type: str = "cpu"  # TODO: change back to auto when cuda is ready
@@ -54,8 +55,9 @@ class AlignmentTrainer:
         self.train_config = EasyDict(self.train_config.__dict__)  # type: ignore
         self.model_config = EasyDict(self.model_config.__dict__)  # type: ignore
         self.dataset_config = EasyDict(self.dataset_config.__dict__)  # type: ignore
-        self.dataloader_config = EasyDict(self.dataloader_config.__dict__)  # type: ignore
-        self.train_dataloader, self.eval_dataloader, self.evaluator = None, None, None
+        self.train_dataloader_config = EasyDict(self.train_dataloader_config.__dict__)  # type: ignore
+        self.eval_dataloader_config = EasyDict(self.eval_dataloader_config.__dict__)  # type: ignore
+        self.train_dataloader, self.eval_dataloader = None, None
 
         # setup wandb account if any
         if self.train_config.log_with == "wanb":
@@ -91,12 +93,7 @@ class AlignmentTrainer:
         if self.eval_data is not None:
             self.eval_dataloader = DataLoader(
                 self.eval_data.data,  # type:ignore
-                # TODO: see if can get batched eval to work
-                # **self.dataloader_config,  # type:ignore
-                batch_size=1,
-                num_workers=0,
-                pin_memory=False,
-                shuffle=True,
+                **self.eval_dataloader_config,  # type:ignore
             )
             self.eval_dataloader = self.accelerator.prepare(self.eval_dataloader)
         logger.success("Accelerator prepared training components.")
@@ -155,7 +152,9 @@ class AlignmentTrainer:
 
                 # Element-wise loss then mask
                 loss_matrix = self.criterion(logits, labels)  # (B, S, T)
-                masked_loss = (loss_matrix * label_mask).sum() / label_mask.sum()
+                masked_loss = (loss_matrix * label_mask).sum() / (
+                    label_mask.sum() + 1e-8
+                )
 
                 # Backward and optimizer step
                 optimizer.zero_grad()
@@ -173,7 +172,14 @@ class AlignmentTrainer:
 
             # Calculate average loss for this epoch using epoch_steps
             avg_epoch_loss = total_masked_loss / epoch_steps
-            pbar.write(f"Epoch {epoch + 1}: Avg masked loss = {avg_epoch_loss:.6f}")
+            pbar.write(
+                f"Epoch {epoch + 1}: Avg Training masked loss = {avg_epoch_loss:.6f}"
+            )
+            if self.eval_dataloader is not None:
+                avg_epoch_val_loss = self.evaluate()
+                pbar.write(
+                    f"Epoch {epoch + 1}: Avg Validation masked loss = {avg_epoch_val_loss:.6f}"
+                )
 
         # Return average loss across all epochs and all steps
         return total_loss_all_epochs / total_steps
@@ -181,7 +187,23 @@ class AlignmentTrainer:
     @torch.no_grad
     @logger.catch(message="Failed to perform evaluation.", reraise=True)
     def evaluate(self):
-        pass
+        total_loss = 0.0
+        for step, batch in enumerate(self.eval_dataloader):  # type: ignore
+            input_ids = batch["input_ids"].to(self.user_defined_device)
+            attn_mask = batch["attention_mask"].to(self.user_defined_device)
+            src_word_ids = batch["source_word_ids"].to(self.user_defined_device)
+            tgt_word_ids = batch["target_word_ids"].to(self.user_defined_device)
+            labels = batch["labels"].to(self.user_defined_device)
+            label_mask = batch["label_mask"].to(self.user_defined_device)
+
+            logits = self.model(input_ids, attn_mask, src_word_ids, tgt_word_ids)  # type: ignore
+            loss_matrix = self.criterion(logits, labels)
+            masked_loss = (loss_matrix * label_mask).sum() / (label_mask.sum() + 1e-8)
+
+            total_loss += masked_loss.item()
+
+        self.model.train()  # type: ignore  # return model to training mode
+        return total_loss / len(self.eval_dataloader)  # type: ignore
 
     @logger.catch(message="Failed to initialise training utils", reraise=True)
     def _init_training_utils(self):
@@ -222,10 +244,10 @@ class AlignmentTrainer:
             logger.success("Special tokens added.")
 
         # Prepare Train Dataloader FIRST (before calculating steps)
-        self.dataloader_config.collate_fn = create_collate_fn(self.tokenizer)
+        self.train_dataloader_config.collate_fn = create_collate_fn(self.tokenizer)
         self.train_dataloader = DataLoader(
             self.train_data.data,  # type: ignore
-            **self.dataloader_config,  # type:ignore
+            **self.train_dataloader_config,  # type:ignore
         )
 
         # calculate training steps using the actual dataloader length
@@ -363,35 +385,46 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=10,
+        limit=500,
         debug_mode=False,
     )
-    # eval_dataset_config = DatasetConfig(
-    #     source_lines_path="data/cleaned_data/dev.src",
-    #     target_lines_path="data/cleaned_data/dev.tgt",
-    #     alignments_path="data/cleaned_data/dev.talp",
-    #     limit=10,
-    #     do_inference=True,
-    # )
+    eval_dataset_config = DatasetConfig(
+        source_lines_path="data/cleaned_data/dev.src",
+        target_lines_path="data/cleaned_data/dev.tgt",
+        alignments_path="data/cleaned_data/dev.talp",
+        limit=100,
+        do_inference=True,
+    )
+
     tok = AutoTokenizer.from_pretrained(
         model_config.model_name_or_path, add_prefix_space=True
     )
-    dataloader_config = DataLoaderConfig(collate_fn=create_collate_fn(tokenizer=tok))
+    train_dataloader_config = DataLoaderConfig(
+        collate_fn=create_collate_fn(tokenizer=tok)
+    )
+    eval_dataloader_config = DataLoaderConfig(
+        collate_fn=create_collate_fn(tokenizer=tok), shuffle=False
+    )
     train_data = AlignmentPairDataset(
         tokenizer=tok,
         **train_dataset_config.__dict__,
-        dataloader_config=dataloader_config,
+        dataloader_config=train_dataloader_config,
     )
-    # eval_data = AlignmentPairDataset(tokenizer=tok, **eval_dataset_config.__dict__)
+    eval_data = AlignmentPairDataset(
+        tokenizer=tok,
+        **eval_dataset_config.__dict__,
+        dataloader_config=eval_dataloader_config,
+    )
 
     trainer = AlignmentTrainer(
         tokenizer=tok,
         model_config=model_config,
         train_config=train_config,
         dataset_config=train_dataset_config,
-        dataloader_config=dataloader_config,
+        train_dataloader_config=train_dataloader_config,
+        eval_dataloader_config=eval_dataloader_config,
         train_data=train_data,
-        eval_data=None,  # TODO: change when eval is set up
+        eval_data=eval_data,
         seed_num=1,
     )
     trainer.run()
