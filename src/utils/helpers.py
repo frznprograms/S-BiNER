@@ -1,12 +1,49 @@
 import os
 import random
-from typing import Any, Optional, Union
-
+from typing import Any, Optional, Union, Dict
+from safetensors.torch import save_file, load_file
 import torch
+import json
+from transformers.modeling_utils import PreTrainedModel
 import wandb
 import yaml
 from easydict import EasyDict
 from loguru import logger
+from pathlib import Path
+
+
+def write_hf_checkpoint(
+    model: PreTrainedModel,
+    save_dir: Union[str, Path],
+    config_dict: Dict[str, Any],
+    safe_serialization: bool = True,
+):
+    save_dir = Path(save_dir)  # type: ignore
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(save_dir / "custom_config.json", "w") as f:  # type: ignore
+        json.dump(config_dict, f, indent=4)
+
+    state = model.state_dict()
+    if safe_serialization:
+        save_file(state, str(save_dir / "model.safetensors"))  # type: ignore
+    else:
+        torch.save(state, save_dir / "pytorch_model.bin")  # type: ignore
+
+
+def load_hf_checkpoint(load_dir: Union[str, Path], map_location: str = "cpu"):
+    load_dir = Path(load_dir)  # type: ignore
+    st_path_safe = load_dir / "model.safetensors"  # type: ignore
+    st_path_torch = load_dir / "pytorch_model.bin"  # type: ignore
+
+    if st_path_safe.exists():
+        return load_file(str(st_path_safe), device=map_location)
+    elif st_path_torch.exists():
+        return torch.load(st_path_torch, map_location=map_location)
+    else:
+        raise FileNotFoundError(
+            f"No model.safetensors or pytorch_model.bin in {load_dir}"
+        )
 
 
 def delist_the_list(items: list):

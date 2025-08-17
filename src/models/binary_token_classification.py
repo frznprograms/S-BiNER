@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+from src.utils.helpers import load_hf_checkpoint
 from typing import Callable, Union
 import torch
 import torch.nn as nn
@@ -216,6 +219,64 @@ class BinaryTokenClassificationModel(nn.Module):
             tgt_word_embs = tgt_word_embs[:, :max_target_length]
 
         return src_word_embs, tgt_word_embs
+
+    @classmethod
+    def from_pretrained(
+        cls, load_dir: str, map_location: str = "cpu", strict: bool = True
+    ):
+        load_path = Path(load_dir)
+
+        # 1) Read your custom config (prefer binary_config.json; fall back to config.json for old runs)
+        cfg_path = load_path / "binary_config.json"
+        if not cfg_path.exists():
+            cfg_path = load_path / "custom_config.json"
+        with open(cfg_path, "r") as f:
+            cfg = json.load(f)
+
+        # 2) Rebuild ModelConfig
+        # Expect either cfg["init_args"]["config"] or cfg["model_config"] to be a dict of ModelConfig fields
+        model_cfg_dict = (
+            (cfg.get("init_args") or {}).get("config") or cfg.get("model_config") or {}
+        )
+        model_config = ModelConfig(**model_cfg_dict)
+
+        # 3) Rebuild the encoder
+        # Preferred: if the checkpoint contains an /encoder subfolder (saved via encoder.save_pretrained),
+        # load from there. Otherwise, fall back to a recorded name_or_path (hub id or local path).
+        from transformers import AutoModel
+
+        encoder_subdir = load_path / "encoder"
+        name_or_path = (
+            cfg.get("backbone_name_or_path")
+            or cfg.get("base_model_name_or_path")
+            or None
+        )
+
+        if encoder_subdir.exists():
+            encoder = AutoModel.from_pretrained(str(encoder_subdir), torch_dtype="auto")
+        elif name_or_path is not None:
+            encoder = AutoModel.from_pretrained(name_or_path, torch_dtype="auto")
+        else:
+            # Last resort: try root (only works if you placed encoder files in the root, which I don't recommend)
+            try:
+                encoder = AutoModel.from_pretrained(str(load_path), torch_dtype="auto")
+            except Exception as e:
+                raise RuntimeError(
+                    "Could not locate encoder. Expecting 'encoder/' subfolder or a "
+                    "'backbone_name_or_path' in the config."
+                ) from e
+
+        # 4) Build the full model and load the weights
+        model = cls(encoder=encoder, config=model_config)
+
+        state_dict = load_hf_checkpoint(str(load_path), map_location=map_location)
+        missing, unexpected = model.load_state_dict(state_dict, strict=strict)
+        if missing or unexpected:
+            logger.warning(
+                f"load_state_dict: missing={missing}, unexpected={unexpected}"
+            )
+
+        return model
 
 
 def get_unique_words_from_mapping(word_ids_1d: torch.Tensor) -> int:

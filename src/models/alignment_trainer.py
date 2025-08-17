@@ -25,6 +25,7 @@ from src.utils.helpers import (
     init_wandb_tracker,
     set_device,
     set_seeds,
+    write_hf_checkpoint,
 )
 
 
@@ -324,7 +325,22 @@ class AlignmentTrainer:
                 checkpoint_path.mkdir(parents=True, exist_ok=True)
 
                 # Save the model state to the specific checkpoint directory
-                self.accelerator.save_state(checkpoint_path)  # type: ignore
+                unwrapped_model = self.accelerator.unwrap_model(self.model)
+                alignment_custom_config = {
+                    "model_type": "binary_token_classification",
+                    "model_name_or_path": self.model_config.model_name_or_path,
+                    "init_args": {"config": self.model_config.__dict__},
+                }
+                write_hf_checkpoint(
+                    model=unwrapped_model,
+                    save_dir=checkpoint_path,
+                    config_dict=alignment_custom_config,
+                    safe_serialization=True,
+                )
+
+                encoder_dir = checkpoint_path / "encoder"
+                encoder_dir.mkdir(exist_ok=True)
+                unwrapped_model.encoder.save_pretrained(encoder_dir)
 
                 pbar.write(
                     f"Checkpoint saved at step {global_step} to {checkpoint_path}"

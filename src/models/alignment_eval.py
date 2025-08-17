@@ -1,3 +1,4 @@
+from tqdm.auto import tqdm
 from loguru import logger
 from dataclasses import dataclass
 from easydict import EasyDict
@@ -8,10 +9,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from src.utils.helpers import set_device
-from src.models.binary_token_classification import create_collate_fn
+from src.models.binary_token_classification import (
+    BinaryTokenClassificationModel,
+    create_collate_fn,
+)
 from src.configs.dataset_config import DatasetConfig
 from src.configs.model_config import ModelConfig
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer
 
 
 @dataclass
@@ -30,9 +34,13 @@ class AlignmentPairEvaluator:
             self.checkpoint_number = "final"  # use the last checkpoint
 
         self.user_defined_device = set_device(self.device_type)
-        self.model = AutoModel.from_pretrained(
-            f"{self.checkpoint_path}/checkpoint-{self.checkpoint_number}"
-        ).to(self.user_defined_device)
+
+        map_location = self.user_defined_device
+        self.model = BinaryTokenClassificationModel.from_pretrained(
+            load_dir=f"{self.checkpoint_path}/checkpoint-{self.checkpoint_number}",
+            map_location=map_location,
+            strict=True,
+        )
 
         self.eval_dataloader_config = EasyDict(self.eval_dataloader_config.__dict__)  # type: ignore
         self.eval_dataloader = DataLoader(
@@ -46,6 +54,10 @@ class AlignmentPairEvaluator:
     def run(self):
         logger.info("Starting evaluations now...")
         self.model.eval()
+
+        n = len(self.eval_dataloader)
+        pbar = tqdm(total=n)
+
         total_loss, total_precision, total_recall, total_f1 = 0.0, 0.0, 0.0, 0.0
         for step, batch in enumerate(self.eval_dataloader):  # type: ignore
             input_ids = batch["input_ids"].to(self.user_defined_device)
@@ -62,24 +74,24 @@ class AlignmentPairEvaluator:
                 logits, labels, label_mask, threshold=self.threshold
             )
 
-            print("Batch metrics:")
-            print(f"Batch loss: {masked_loss:.6f}")
-            print(f"Batch precision: {precision:.6f}")
-            print(f"Batch recall: {recall:.6f}")
-            print(f"Batch f1: {f1:.6f}")
-
             total_loss += masked_loss.item()
             total_precision += precision
             total_recall += recall
             total_f1 += f1
 
-        n = len(self.eval_dataloader)
+            pbar.update(1)
+
         metrics = {
             "BCE Loss": total_loss / n,
             "Precision": total_precision / n,
             "Recall": total_recall / n,
             "F1": total_f1 / n,
         }
+        print(f"Average Loss: {total_loss / n}")
+        print(f"Average Precision: {total_precision / n}")
+        print(f"Average Recall: {total_recall / n}")
+        print(f"Average f1_score: {total_f1 / n}")
+
         logger.success("Evaluations completed.")
 
         return metrics
