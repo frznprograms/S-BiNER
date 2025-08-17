@@ -28,6 +28,7 @@ class AlignmentPairEvaluator:
     debug_mode: bool = False
     project_name: str = "pair-alignment-for-zh-ner"
     threshold: float = 0.5
+    pos_weight: int = 15
 
     def __post_init__(self):
         if self.checkpoint_number is None:
@@ -47,7 +48,9 @@ class AlignmentPairEvaluator:
             self.eval_data.data,
             **self.eval_dataloader_config,  # type: ignore
         )
-        self.criterion = nn.BCEWithLogitsLoss(reduction="none")  # Element-wise loss
+        self.criterion = nn.BCEWithLogitsLoss(
+            reduction="none", pos_weight=torch.tensor([self.pos_weight])
+        ).to(self.user_defined_device)  # Element-wise loss
 
     @torch.no_grad
     @logger.catch(message="Unable to complete evaluation", reraise=True)
@@ -68,8 +71,11 @@ class AlignmentPairEvaluator:
             label_mask = batch["label_mask"].to(self.user_defined_device)
 
             logits = self.model(input_ids, attn_mask, src_word_ids, tgt_word_ids)  # type: ignore
-            loss_matrix = self.criterion(logits, labels)
-            masked_loss = (loss_matrix * label_mask).sum() / (label_mask.sum() + 1e-8)
+            loss_matrix = self.criterion(logits, labels)  # (B, S, T)
+            per_sample_normalized_loss = (loss_matrix * label_mask).sum(dim=(1, 2)) / (
+                label_mask.sum(dim=(1, 2)) + 1e-8
+            )
+            masked_loss = per_sample_normalized_loss.mean()
             precision, recall, f1 = self.calculate_metrics(
                 logits, labels, label_mask, threshold=self.threshold
             )

@@ -117,7 +117,9 @@ class AlignmentTrainer:
             disable=not self.accelerator.is_local_main_process,
         )
 
-        self.criterion = nn.BCEWithLogitsLoss(reduction="none")  # Element-wise loss
+        self.criterion = nn.BCEWithLogitsLoss(
+            reduction="none", pos_weight=torch.tensor([self.model_config.pos_weight])
+        ).to(self.user_defined_device)  # Element-wise loss
         # TODO: implement early stopping after eval is set up properly
 
         self.model.train()
@@ -153,9 +155,10 @@ class AlignmentTrainer:
 
                 # Element-wise loss then mask
                 loss_matrix = self.criterion(logits, labels)  # (B, S, T)
-                masked_loss = (loss_matrix * label_mask).sum() / (
-                    label_mask.sum() + 1e-8
-                )
+                per_sample_normalized_loss = (loss_matrix * label_mask).sum(
+                    dim=(1, 2)
+                ) / (label_mask.sum(dim=(1, 2)) + 1e-8)
+                masked_loss = per_sample_normalized_loss.mean()
 
                 # Backward and optimizer step
                 optimizer.zero_grad()

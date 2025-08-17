@@ -19,6 +19,7 @@ class ModelConfig(ABC):
     hidden_size: int = 768
     gradient_checkpointing: bool = True
     model_save_path: str = "output"
+    pos_weight: int = 15
 
     # These will be set from the transformer model config when initializing
     vocab_size: Optional[int] = None
