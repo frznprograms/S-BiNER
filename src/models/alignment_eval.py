@@ -1,21 +1,22 @@
-from tqdm.auto import tqdm
-from loguru import logger
 from dataclasses import dataclass
-from easydict import EasyDict
-from src.configs.dataset_config import DataLoaderConfig
-from src.datasets.alignment_pair_dataset import AlignmentPairDataset
 from typing import Optional, Union
+
 import torch
 import torch.nn as nn
+from easydict import EasyDict
+from loguru import logger
 from torch.utils.data import DataLoader
-from src.utils.helpers import set_device
+from tqdm.auto import tqdm
+from transformers import AutoTokenizer
+
+from src.configs.dataset_config import DataLoaderConfig, DatasetConfig
+from src.configs.model_config import ModelConfig
+from src.datasets.alignment_pair_dataset import AlignmentPairDataset
 from src.models.binary_token_classification import (
     BinaryTokenClassificationModel,
     create_collate_fn,
 )
-from src.configs.dataset_config import DatasetConfig
-from src.configs.model_config import ModelConfig
-from transformers import AutoTokenizer
+from src.utils.helpers import set_device
 
 
 @dataclass

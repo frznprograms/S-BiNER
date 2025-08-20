@@ -1,17 +1,19 @@
 import json
 from pathlib import Path
-from src.utils.helpers import load_hf_checkpoint
 from typing import Callable, Union
+
 import torch
 import torch.nn as nn
+from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 from transformers import (
     RobertaPreTrainedModel,
     XLMRobertaPreTrainedModel,
 )
 from transformers.tokenization_utils import PreTrainedTokenizer
+
 from src.configs.model_config import ModelConfig
-from loguru import logger
+from src.utils.helpers import load_hf_checkpoint
 
 
 class BinaryTokenClassificationModel(nn.Module):

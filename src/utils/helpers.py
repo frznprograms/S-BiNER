@@ -1,15 +1,16 @@
+import json
 import os
 import random
-from typing import Any, Optional, Union, Dict
-from safetensors.torch import save_file, load_file
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
+
 import torch
-import json
-from transformers.modeling_utils import PreTrainedModel
 import wandb
 import yaml
 from easydict import EasyDict
 from loguru import logger
-from pathlib import Path
+from safetensors.torch import load_file, save_file
+from transformers.modeling_utils import PreTrainedModel
 
 
 def write_hf_checkpoint(

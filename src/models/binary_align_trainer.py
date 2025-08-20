@@ -22,7 +22,7 @@ from src.datasets.datasets_silver import AlignmentDatasetSilver
 from src.models.binary_align_eval import BinaryAlignEvaluator
 from src.models.binary_align_factory import BinaryTokenClassificationFactory
 from src.utils.decorators import timed_execution
-from src.utils.helpers import collate_fn_span, set_device, set_seeds, init_wandb_tracker
+from src.utils.helpers import collate_fn_span, init_wandb_tracker, set_device, set_seeds
 
 
 @dataclass
