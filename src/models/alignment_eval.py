@@ -18,6 +18,9 @@ from src.models.binary_token_classification import (
 )
 from src.utils.helpers import set_device
 
+# TODO: find out if you need the classes to be frozen. If so, changed them
+# such that properties can be modified with setter methods
+
 
 @dataclass
 class AlignmentPairEvaluator:
@@ -51,7 +54,9 @@ class AlignmentPairEvaluator:
         )
         self.criterion = nn.BCEWithLogitsLoss(
             reduction="none", pos_weight=torch.tensor([self.pos_weight])
-        ).to(self.user_defined_device)  # Element-wise loss
+        ).to(
+            self.user_defined_device
+        )  # Element-wise loss
 
     @torch.no_grad
     @logger.catch(message="Unable to complete evaluation", reraise=True)

@@ -341,8 +341,12 @@ class AlignmentPairDataset(Dataset):
             target_ids_single = target_input_ids[i]
 
             # Convert to tokens and decode
-            source_tokens = self.tokenizer.convert_ids_to_tokens(source_ids_single)  # type:ignore
-            target_tokens = self.tokenizer.convert_ids_to_tokens(target_ids_single)  # type:ignore
+            source_tokens = self.tokenizer.convert_ids_to_tokens(
+                source_ids_single  # type: ignore
+            )
+            target_tokens = self.tokenizer.convert_ids_to_tokens(
+                target_ids_single  # type:ignore
+            )
             source_text = self.tokenizer.decode(source_ids_single)
             target_text = self.tokenizer.decode(target_ids_single)
 
@@ -451,7 +455,7 @@ if __name__ == "__main__":
         source_lines_path="data/cleaned_data/train.src",
         target_lines_path="data/cleaned_data/train.tgt",
         alignments_path="data/cleaned_data/train.talp",
-        limit=1,
+        limit=1000,
         debug_mode=False,
     )
     dataloader_config = DataLoaderConfig()  # just use default batch_size=4
