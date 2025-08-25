@@ -63,7 +63,7 @@ class NERHeuristics:
         for start_entity_idx, end_entity_idx, entity_type in self.entity_spans:
             an_alignment = self.check_for_alignments(idx=start_entity_idx)
             # recursively check for alignment in subsequent words
-            while not an_alignment and start_entity_idx != end_entity_idx:
+            while not an_alignment and start_entity_idx < end_entity_idx:
                 start_entity_idx += 1
                 an_alignment = self.check_for_alignments(idx=start_entity_idx)
             start_entity_alignments = an_alignment
@@ -72,7 +72,7 @@ class NERHeuristics:
                 continue
 
             an_alignment = self.check_for_alignments(idx=end_entity_idx)
-            while not an_alignment and start_entity_idx != end_entity_idx:
+            while not an_alignment and start_entity_idx < end_entity_idx:
                 end_entity_idx += 1
                 an_alignment = self.check_for_alignments(idx=end_entity_idx)
             end_entity_alignments = an_alignment
