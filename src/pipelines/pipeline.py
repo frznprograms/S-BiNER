@@ -13,6 +13,9 @@ from src.datasets.datasets_silver import AlignmentDatasetSilver
 from src.utils.helpers import collate_fn_span, parse_config, set_device, set_seeds
 from src.models.binary_align_trainer import BinaryAlignTrainer
 
+# TODO: prepare such that dataset gets deleted after each stage is done (i.e. only
+# one dataset to exist at each stage. Return final dataset when pipeline is done)
+
 
 @dataclass
 class AlignmentGenerationPipeline(LoggedProcess):
