@@ -6,15 +6,18 @@ from loguru import logger
 @dataclass
 class NERHeuristics:
     target_sentences: list[str]
-    alignments_dict_list: list[dict[int, list[int]]] = field(default_factory=list)
-    entity_spans_list: list[list[tuple[int, int, str]]] = field(default_factory=list)
+    # alignments_dict_list: list[dict[int, list[int]]] = field(default_factory=list)
+    # entity_spans_list: list[list[tuple[int, int, str]]] = field(default_factory=list)
     target_labels_list: list[list[str]] = field(default_factory=list)
+    batch_size: int = -4
 
     @logger.catch(message="Unable to complete NER labelling.", reraise=True)
     def run(self):
-        # TODO: refactor to work on a whole dataset instead of just one row
-        # need to prepare dataloader
-        pass
+        # TODO: instead of storing all the alignments and entity spans, just return
+        # the list of target labels -> more memory efficient and no need dataloader
+        # TODO: use multithreading for speed?
+        for i in range(0, len(self.target_sentences), self.batch_size):
+            pass
 
     @logger.catch(message="Unable to identify NER tags for sentence.", reraise=True)
     def identify_ner_tags(self, source_labels: list[str]) -> list[tuple[int, int, str]]:
@@ -37,8 +40,8 @@ class NERHeuristics:
         return entity_spans
 
     @logger.catch(message="Unable to prepare target labels.", reraise=True)
-    def _prepare_target_labels_list(self) -> list[str]:
-        target_labels = ["O" * len(self.target_sentence.split())]
+    def _prepare_target_labels_list(self, target_sentence: str) -> list[str]:
+        target_labels = ["O" * len(target_sentence.split())]
         return target_labels
 
     @logger.catch(message="Unable to prepare alignments dictionary.", reraise=True)
