@@ -146,6 +146,13 @@ def parse_config(
         return EasyDict({})
 
 
+def get_num_workers():
+    pass
+
+
+# TODO: implement this to get number of workers
+
+
 def init_wandb_tracker():
     wandb.login()
     # wandb.init(project=self.project_name)

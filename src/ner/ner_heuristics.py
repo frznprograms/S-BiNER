@@ -2,22 +2,51 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from loguru import logger
 
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
+
+from src.datasets.ner_dataset import SBinerNERDataset
+
 
 @dataclass
 class NERHeuristics:
     target_sentences: list[str]
+    source_labels: list[list[str]]
     # alignments_dict_list: list[dict[int, list[int]]] = field(default_factory=list)
     # entity_spans_list: list[list[tuple[int, int, str]]] = field(default_factory=list)
     target_labels_list: list[list[str]] = field(default_factory=list)
-    batch_size: int = -4
+    batch_size: int = 4
+    debug_mode: bool = False
 
     @logger.catch(message="Unable to complete NER labelling.", reraise=True)
-    def run(self):
+    def run(self, default_max_workers: int = 3):
         # TODO: instead of storing all the alignments and entity spans, just return
         # the list of target labels -> more memory efficient and no need dataloader
         # TODO: use multithreading for speed?
-        for i in range(0, len(self.target_sentences), self.batch_size):
-            pass
+
+        num_workers = get_num_workers(default_max_workers)
+        if self.debug_mode:
+            logger.info(f"Using {num_workers} cpu cores.")
+        # create dataset, then create alignments_dict and entity_spans on the fly
+        dataset = SBinerNERDataset(self.target_sentences)
+        dataloader = DataLoader(
+            dataset=dataset,
+            batch_size=self.batch_size,
+            collate_fn=lambda x: x,  # just return the batch
+            num_workers=num_workers,
+        )
+
+        pbar = tqdm(
+            total=len(self.target_sentences), desc="Performing annotation projection..."
+        )
+        projected_ner_labels = []
+        for batched_source_labels, batched_target_sentences in dataloader:
+            batched_alignment_dicts = self._prepare_batched_alignment_dicts()
+            batched_entity_spans = self.identify_batched_ner_tags(batched_source_labels)
+            # TODO: source labels need to be part of SBinerNERDataset
+            batched_target_labels = self.project_labels_batched()
+
+            pbar.update(len(batched_target_labels))
 
     @logger.catch(message="Unable to identify NER tags for sentence.", reraise=True)
     def identify_ner_tags(self, source_labels: list[str]) -> list[tuple[int, int, str]]:
