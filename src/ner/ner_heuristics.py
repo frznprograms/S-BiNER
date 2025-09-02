@@ -6,29 +6,33 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from src.datasets.ner_dataset import SBinerNERDataset
+from src.utils.helpers import get_num_workers
 
 
 @dataclass
 class NERHeuristics:
-    target_sentences: list[str]
-    source_labels: list[list[str]]
-    # alignments_dict_list: list[dict[int, list[int]]] = field(default_factory=list)
-    # entity_spans_list: list[list[tuple[int, int, str]]] = field(default_factory=list)
     target_labels_list: list[list[str]] = field(default_factory=list)
     batch_size: int = 4
     debug_mode: bool = False
 
     @logger.catch(message="Unable to complete NER labelling.", reraise=True)
-    def run(self, default_max_workers: int = 3):
-        # TODO: instead of storing all the alignments and entity spans, just return
-        # the list of target labels -> more memory efficient and no need dataloader
+    def run(
+        self,
+        source_sentences: list[str],
+        target_sentences: list[str],
+        source_labels=list[list[str]],
+        default_max_workers: int = 3,
+    ):
         # TODO: use multithreading for speed?
 
         num_workers = get_num_workers(default_max_workers)
         if self.debug_mode:
             logger.info(f"Using {num_workers} cpu cores.")
+
         # create dataset, then create alignments_dict and entity_spans on the fly
-        dataset = SBinerNERDataset(self.target_sentences)
+        dataset = SBinerNERDataset(
+            source_sentences=source_sentences, target_sentences=target_sentences
+        )
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.batch_size,
@@ -37,49 +41,75 @@ class NERHeuristics:
         )
 
         pbar = tqdm(
-            total=len(self.target_sentences), desc="Performing annotation projection..."
+            total=len(target_sentences), desc="Performing annotation projection..."
         )
         projected_ner_labels = []
-        for batched_source_labels, batched_target_sentences in dataloader:
-            batched_alignment_dicts = self._prepare_batched_alignment_dicts()
-            batched_entity_spans = self.identify_batched_ner_tags(batched_source_labels)
-            # TODO: source labels need to be part of SBinerNERDataset
-            batched_target_labels = self.project_labels_batched()
+        # for batched_source_labels, batched_target_sentences in dataloader:
+        #     batched_alignment_dicts = self._prepare_batched_alignment_dicts()
+        #     batched_entity_spans = self.identify_batched_ner_tags(batched_source_labels)
+        #     batched_target_labels = self.project_labels_batched()
 
-            pbar.update(len(batched_target_labels))
+        #    pbar.update(len(batched_target_labels))
 
-    @logger.catch(message="Unable to identify NER tags for sentence.", reraise=True)
-    def identify_ner_tags(self, source_labels: list[str]) -> list[tuple[int, int, str]]:
+        pass
+
+    @logger.catch(
+        message="Unable to identify NER tags for batched sentence(s).", reraise=True
+    )
+    def identify_ner_tags(
+        self, source_labels: list[list[str]]
+    ) -> list[list[tuple[int, int, str]]]:
         """Groups entities by tags: 'B-LOC', 'I-LOC', 'I-LOC' becomes 'LOC', 'LOC', 'LOC'"""
         entity_spans = []
-        i = 0
-        while i < len(source_labels):
-            label = source_labels[i]
-            if label.startswith("B-"):
-                start = i
-                entity_type = label[2:]
-                i += 1
-                # ensure entity type is correct
-                while i < len(source_labels) and source_labels[i] == f"I-{entity_type}":
+        for i in range(len(source_labels)):
+            entity_spans_single = []
+            source_labels_single = source_labels[i]
+            i = 0
+            while i < len(source_labels_single):
+                label = source_labels[i]
+                if label.startswith("B-"):  # type: ignore
+                    start = i
+                    entity_type = label[2:]
                     i += 1
-                entity_spans.append((start, i, entity_type))
-            else:
-                i += 1
+                    # ensure entity type is correct
+                    while (
+                        i < len(source_labels)
+                        and source_labels[i] == f"I-{entity_type}"
+                    ):
+                        i += 1
+                    entity_spans_single.append((start, i, entity_type))
+                else:
+                    i += 1
+            entity_spans.append(entity_spans_single)
 
         return entity_spans
 
-    @logger.catch(message="Unable to prepare target labels.", reraise=True)
-    def _prepare_target_labels_list(self, target_sentence: str) -> list[str]:
-        target_labels = ["O" * len(target_sentence.split())]
+    @logger.catch(message="Unable to prepare batched target labels.", reraise=True)
+    def _prepare_target_labels_list(
+        self, target_sentences: list[str]
+    ) -> list[list[str]]:
+        target_labels = []
+        for i in range(len(target_sentences)):
+            target_sentence = target_sentences[i]
+            target_labels_single = ["O" * len(target_sentence.split())]
+            target_labels.append(target_labels_single)
+
         return target_labels
 
-    @logger.catch(message="Unable to prepare alignments dictionary.", reraise=True)
+    @logger.catch(
+        message="Unable to prepare batched alignments dictionary.", reraise=True
+    )
     def _prepare_alignments_dict(
-        self, alignments: list[tuple[int, int]]
-    ) -> dict[int, list[int]]:
-        alignments_dict = defaultdict(list)
-        for source_idx, target_idx in alignments:
-            alignments_dict[source_idx].append(target_idx)
+        self, alignments: list[list[tuple[int, int]]]
+    ) -> list[dict[int, list[int]]]:
+        alignments_dict = []
+        for i in range(len(alignments)):
+            alignments_dict_single = defaultdict(list)
+            alignments_single = alignments[i]
+            for source_idx, target_idx in alignments_single:
+                alignments_dict_single[source_idx].append(target_idx)
+
+            alignments_dict.append(alignments_dict_single)
 
         return alignments_dict
 
