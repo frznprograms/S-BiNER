@@ -1,4 +1,5 @@
 import json
+from multiprocessing import cpu_count
 import os
 import random
 from pathlib import Path
@@ -146,11 +147,14 @@ def parse_config(
         return EasyDict({})
 
 
-def get_num_workers():
-    pass
-
-
-# TODO: implement this to get number of workers
+def get_num_workers(default_max: int = 3) -> int:
+    try:
+        system_cores = cpu_count()
+        capped_cores = min(max(1, system_cores), default_max)
+        user_defined = os.environ.get("PIGEON_NUM_WORKERS")
+        return int(user_defined) if user_defined else capped_cores
+    except Exception:
+        return 1  # just use single subprocess
 
 
 def init_wandb_tracker():
