@@ -20,7 +20,8 @@ class NERHeuristics:
         self,
         source_sentences: list[str],
         target_sentences: list[str],
-        source_labels=list[list[str]],
+        source_labels: list[list[str]],
+        alignments: list[list[tuple[int, int]]],
         default_max_workers: int = 3,
     ):
         # TODO: use multithreading for speed?
@@ -29,14 +30,18 @@ class NERHeuristics:
         if self.debug_mode:
             logger.info(f"Using {num_workers} cpu cores.")
 
-        # create dataset, then create alignments_dict and entity_spans on the fly
+        # Each dataset item should yield (src_sent, tgt_sent, src_labels, alignment)
         dataset = SBinerNERDataset(
-            source_sentences=source_sentences, target_sentences=target_sentences
+            source_sentences=source_sentences,
+            target_sentences=target_sentences,
+            source_labels=source_labels,
+            alignments=alignments,
         )
+
         dataloader = DataLoader(
             dataset=dataset,
             batch_size=self.batch_size,
-            collate_fn=lambda x: x,  # just return the batch
+            collate_fn=lambda x: list(zip(*x)),
             num_workers=num_workers,
         )
 
@@ -44,14 +49,31 @@ class NERHeuristics:
             total=len(target_sentences), desc="Performing annotation projection..."
         )
         projected_ner_labels = []
-        # for batched_source_labels, batched_target_sentences in dataloader:
-        #     batched_alignment_dicts = self._prepare_batched_alignment_dicts()
-        #     batched_entity_spans = self.identify_batched_ner_tags(batched_source_labels)
-        #     batched_target_labels = self.project_labels_batched()
 
-        #    pbar.update(len(batched_target_labels))
+        for (
+            batched_source_sentences,
+            batched_target_sentences,
+            batched_source_labels,
+            batched_alignments,
+        ) in dataloader:
+            batched_alignment_dicts = self._prepare_alignments_dict(
+                alignments=batched_alignments
+            )
+            batched_entity_spans = self.identify_ner_tags(
+                source_labels=batched_source_labels
+            )
+            batched_target_labels = self.project_labels_batched(
+                target_labels=self._prepare_target_labels_list(
+                    batched_target_sentences
+                ),
+                alignments_dict_list=batched_alignment_dicts,
+                entity_spans=batched_entity_spans,
+            )
 
-        pass
+            pbar.update(len(batched_target_sentences))
+            projected_ner_labels.extend(batched_target_labels)
+
+        return projected_ner_labels
 
     @logger.catch(
         message="Unable to identify NER tags for batched sentence(s).", reraise=True
@@ -119,6 +141,35 @@ class NERHeuristics:
     ) -> list[int]:
         return alignments_dict.get(idx, [])
 
+    @logger.catch(message="Unable to execute batched label projection.", reraise=True)
+    def project_labels_batched(
+        self,
+        target_labels: list[list[str]],
+        alignments_dict_list: list[dict[int, list[int]]],
+        entity_spans: list[list[tuple[int, int, str]]],
+    ) -> list[list[str]]:
+        # all lengths should be consistent
+        assert (
+            len(target_labels) == len(alignments_dict_list) == len(entity_spans)
+        ), "Please ensure that the lists are all the same length"
+
+        projected_labels = []
+        n = len(target_labels)
+        for i in range(n):
+            target_labels_single, alignments_dict_single, entity_spans_single = (
+                target_labels[i],
+                alignments_dict_list[i],
+                entity_spans[i],
+            )
+            projected_labels_single = self.project_labels(
+                target_labels=target_labels_single,
+                alignments_dict=alignments_dict_single,
+                entity_spans=entity_spans_single,
+            )
+            projected_labels.append(projected_labels_single)
+
+        return projected_labels
+
     @logger.catch(
         message="Unable to project labels from source to target sentence.", reraise=True
     )
@@ -127,7 +178,7 @@ class NERHeuristics:
         target_labels: list[str],
         alignments_dict: dict[int, list[int]],
         entity_spans: list[tuple[int, int, str]],
-    ):
+    ) -> list[str]:
         if not alignments_dict or not entity_spans:
             logger.error(
                 "Please pepare the sentence alignments using \
@@ -185,3 +236,5 @@ class NERHeuristics:
 
             target_labels[min_target_idx] = f"B-{entity_type}"  # type: ignore
             target_labels[min_target_idx + 1 : max_target_idx] = f"I-{entity_type}"  # type: ignore
+
+        return target_labels
