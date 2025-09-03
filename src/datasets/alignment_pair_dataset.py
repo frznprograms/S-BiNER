@@ -8,10 +8,13 @@ from easydict import EasyDict
 from loguru import logger
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
+from transformers import AutoTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_utils_base import BatchEncoding
 
-from src.configs.dataset_config import DataLoaderConfig
+from src.configs.dataset_config import DataLoaderConfig, DatasetConfig
+from src.configs.model_config import ModelConfig
+from src.configs.train_config import TrainConfig
 from src.utils.decorators import timed_execution
 from src.utils.helpers import delist_the_list
 
@@ -443,12 +446,6 @@ class AlignmentPairDataset(Dataset):
 
 
 if __name__ == "__main__":
-    from transformers import AutoTokenizer
-
-    from src.configs.dataset_config import DatasetConfig
-    from src.configs.model_config import ModelConfig
-    from src.configs.train_config import TrainConfig
-
     model_config = ModelConfig(model_name_or_path="FacebookAI/roberta-base")
     train_config = TrainConfig(experiment_name="trainer-test", mixed_precision="no")
     train_dataset_config = DatasetConfig(
