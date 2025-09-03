@@ -2,11 +2,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from loguru import logger
 
+import pandas as pd
+
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from src.datasets.ner_dataset import SBinerNERDataset
-from src.utils.helpers import get_num_workers
+from src.utils.helpers import get_num_workers, delist_the_list
 
 
 @dataclass
@@ -15,7 +17,6 @@ class NERHeuristics:
     batch_size: int = 4
     debug_mode: bool = False
 
-    @logger.catch(message="Unable to complete NER labelling.", reraise=True)
     def run(
         self,
         source_sentences: list[str],
@@ -238,3 +239,18 @@ class NERHeuristics:
             target_labels[min_target_idx + 1 : max_target_idx] = f"I-{entity_type}"  # type: ignore
 
         return target_labels
+
+
+if __name__ == "__main__":
+    source_sentences = delist_the_list(
+        pd.read_csv("data/cleaned_data/train.src", sep="\t").values.tolist()
+    )
+    target_sentences = delist_the_list(
+        pd.read_csv("data/cleaned_data/train.tgt", sep="\t").values.tolist()
+    )
+    alignments = delist_the_list(
+        pd.read_csv("data/cleaned_data/train.talp", sep="\t").values.tolist()
+    )
+
+    nerh = NERHeuristics()
+    # TODO: need to get the NER labels for English
