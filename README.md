@@ -1,52 +1,110 @@
+<div align="center"><img src="S-BiNER.PNG" alt="S-BiNER logo" width="200"/></div>
+
 <h1 align="center">S-BiNER</h1>
 <h3 align="center">Binary Word Alignment for NER and Cross-Lingual Tranfer Tasks</h3>
 
 ### Description
-This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on low-resource languages like Chinese. Along the way, I decided to reframe the training objective as truly binary, i.e. a token-to-token alignment problem. This leads to a higher time and space complexity, with the desired effect of better performance. 
+This repository was designed to implement the BinaryAlign methodology as proposed in the paper (link: https://arxiv.org/pdf/2407.12881), with customizations added for improved readability, adaptability to different training devices and fine-tuning to improve model performance on multilingual word alignment (WA) and NER tasks, especially on low-resource languages like Chinese. Along the way, I had to perform a lot of refactoring, and have phrased the problem as a truly binary one, i.e. toke-to-token pairings. This leads to a higher time and space complexity, with the desired effect of better performance. 
 
-The methodology here is intended to come with the added twist of simple heuristics-based annotation projection for Named Entity Recognition (NER) tasks, after the WA model has done all the heavy-lifting.
+The methodology here is intended to come with the added twist of simple heuristics-based annotation projection for Named Entity Recognition (NER) tasks, after the alignment model has done all the heavy-lifting.
 
-This project is a work-in-progress, and I welcome constructive feedback into any ways we can improve the way the model is created, trained, and evaluated. Feel free to reach out to me via GitHub.
+This project is a work-in-progress, and I welcome constructive feedback into any ways we can improve the way the model is created, trained, and evaluated. As I do not speak Chinese, one key limitation is that I'm looking purely at numbers without context, so feel free to reach out to me via GitHub if you'd like to contribute!
 
 **Disclaimer**: This framework is experimental and not designed for production-grade tasks. I am NOT selling this product for profit or for any monetary gain at all. In the spirit of collaboration and community-supported improvements, I wish to keep this repo free-to-use and open-source. ***Please include the citations included below if you wish to repurpose this work.*** 
 
 ### Author(s)
+
 Shane Vivek
 
 ### Instructions for usage
+
 First, install the `uv` package management software for Python: https://docs.astral.sh/uv/getting-started/installation/.
 
 Once installed, run the terminal command
+
 ```bash
 uv init
 ```
 and then 
+
 ```bash
 uv sync
 ``` 
 This will intialise a `.venv` folder and install the required dependencies for this project.
 
 If you do not wish to use the `uv` package (though I would highly recommend it), you may also simply run 
+
 ```bash
 pip install -r requirements.txt
 ```
 To configure accelerate configurations, run 
+
 ```bash
 accelerate config
 ```
 and follow the prompts in the command line.
 
+### File Structure
+
+## Project Structure
+
+```text
+binary_align_zh/
+├── checkpoints/                # Saved model checkpoints
+├── models/
+│   └── binary-align/           # Packaged model for distribution
+│       └── __init__.py
+├── scripts/
+│   └── run_aa.sh               # Script to run AwesomeAlign
+├── src/
+│   ├── awesomealign/           # AwesomeAlign integration
+│   │   ├── aa.ipynb            # Jupyter notebook for experiments
+│   │   └── awesome_align_data.py  # Data handling for AwesomeAlign
+│   ├── configs/                # Configuration files
+│   │   ├── __init__.py
+│   │   ├── dataset_config.py   # Dataset configuration
+│   │   ├── logger_config.py    # Logging configuration
+│   │   ├── model_config.py     # Model hyperparameters
+│   │   ├── train_config.py     # Training configuration
+│   │   └── training_config.yaml # YAML training config
+│   ├── datasets/               # Dataset classes and preprocessors
+│   │   ├── __init__.py
+│   │   ├── alignment_pair_dataset.py # Alignment dataset
+│   │   ├── base_dataset.py     # Base dataset class
+│   │   ├── datasets_gold.py    # Gold-standard datasets
+│   │   ├── datasets_silver.py  # Silver-standard datasets
+│   │   ├── ner_dataset.py      # NER dataset class
+│   │   └── zh_prep.py          # Chinese-specific preprocessing
+│   ├── models/                 # Model definitions and trainers
+│   │   ├── __init__.py
+│   │   ├── alignment_eval.py   # Model evaluator
+│   │   ├── alignment_trainer.py # Trainer for alignment models
+│   │   ├── binary_align_factory.py # Factory for model creation
+│   │   ├── binary_align_models.py # Core model architectures
+│   │   └── binary_token_classification.py # Token classification model architecture
+│   ├── ner/                    # NER-specific heuristics
+│   │   └── ner_heuristics.py   # Heuristic label projection
+│   ├── pipelines/              # High-level orchestration pipelines
+│   │   ├── __init__.py
+│   │   └── pipeline.py         # Defines end-to-end pipeline
+│   └── utils/                  # Utilities and helper functions
+│       ├── __init__.py
+│       ├── decorators.py       # Decorators (logging, timing, etc.)
+│       └── helpers.py          # General helper functions
+├── LICENSE                     # License file
+├── README.md                   # Project documentation
+├── main.py                     # Main entry point
+├── pyproject.toml              # Build system configuration
+└── uv.lock                     # Dependency lockfile
+```
 
 🚧 WORK IN PROGRESS 🚧
 
 ### Input and Output formats
 
-
-### License
-
-
 ### Citations
-I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which much of the code here was inspired, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo. 
+
+I wish to give credit to the original creators of the concept of BinaryAlign, who also created the repository from which the code here was inspired, as well as the creators of the RoBERTa and XLM-R model, which were both utilised in this repo. 
 
 I would also like to thank the good folks at Natural Semantics (Qingdao) Technology Co., Ltd. the main project owner of Hanlp, and Shanghai Linyuan Company for allowing the use of their tokenizer and models for research and teaching purposes. 
 
