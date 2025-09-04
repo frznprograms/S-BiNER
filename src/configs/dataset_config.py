@@ -8,7 +8,7 @@ import torch
 
 
 @dataclass
-class DatasetConfig(ABC):
+class DatasetConfig:
     source_lines_path: str
     target_lines_path: str
     alignments_path: str

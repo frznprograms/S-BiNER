@@ -1,4 +1,3 @@
-from abc import ABC
 from dataclasses import dataclass
 from typing import Optional
 
@@ -6,7 +5,7 @@ from transformers import RobertaConfig, XLMRobertaConfig
 
 
 @dataclass
-class ModelConfig(ABC):
+class ModelConfig:
     model_name_or_path: str
     is_pretrained: bool = False
     learning_rate: float = 2e-5

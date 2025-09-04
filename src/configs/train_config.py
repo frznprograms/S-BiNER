@@ -1,4 +1,3 @@
-from abc import ABC
 from dataclasses import dataclass
 from typing import Optional
 
@@ -6,7 +5,7 @@ from easydict import EasyDict
 
 
 @dataclass
-class TrainConfig(ABC):
+class TrainConfig:
     experiment_name: str
     num_train_epochs: int = 3
     mixed_precision: str = "fp16"
