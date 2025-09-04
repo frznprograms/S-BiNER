@@ -6,6 +6,11 @@ from easydict import EasyDict
 
 @dataclass
 class TrainConfig:
+    """
+    Class which determines training configurations, i.e. configurations to be used
+    during the training loop. Mirrors torch training.
+    """
+
     experiment_name: str
     num_train_epochs: int = 3
     mixed_precision: str = "fp16"

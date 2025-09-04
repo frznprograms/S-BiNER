@@ -6,6 +6,11 @@ from transformers import RobertaConfig, XLMRobertaConfig
 
 @dataclass
 class ModelConfig:
+    """
+    Class which determines configuration for models. Mirrors configuration for
+    HuggingFace models since the base models are taken from there.
+    """
+
     model_name_or_path: str
     is_pretrained: bool = False
     learning_rate: float = 2e-5
@@ -37,6 +42,9 @@ class ModelConfig:
             self.classifier_dropout = self.hidden_dropout_prob
 
     def _to_roberta_config(self) -> RobertaConfig:
+        """
+        Converts default configuration to one that is Roberta-model compatible.
+        """
         if self.is_pretrained:
             roberta_config = RobertaConfig.from_pretrained(self.model_name_or_path)
         else:
@@ -64,6 +72,9 @@ class ModelConfig:
         return roberta_config  # type:ignore
 
     def _to_xlm_roberta_config(self) -> XLMRobertaConfig:
+        """
+        Converts default configuration to one that is XLM-R-model compatible.
+        """
         if self.is_pretrained:
             xlm_roberta_config = XLMRobertaConfig.from_pretrained(
                 self.model_name_or_path

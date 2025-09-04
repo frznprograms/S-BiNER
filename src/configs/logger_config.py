@@ -10,6 +10,16 @@ DEBUG = True
 
 
 class LoggedProcess:
+    """
+    Class which automatically configures the logger. Most useful in pipelines.
+
+    Init args:
+        output_dir: string path to the desired output directory for logs. This class allows
+                    the user to control which level of logs (e.g. debug, info, warn, error)
+                    are displayed in the CLI, everything else can get logged to a separate file
+                    to view later
+    """
+
     def __init__(self, output_dir: str = "logs"):
         self.output_dir = Path(output_dir)
         self.make_output_directory()  # Create directories first
@@ -29,6 +39,9 @@ class LoggedProcess:
 
     @logger.catch(message="Logging setup failed", reraise=True)
     def setup_logger(self):
+        """
+        Set up logger levels and needed files for debugging and error messages.
+        """
         timestamp = datetime.now().strftime("%d_%H%M")
         debug_dir = self.output_dir / "debug"
         error_dir = self.output_dir / "error"

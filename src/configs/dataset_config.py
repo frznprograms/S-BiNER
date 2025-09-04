@@ -1,4 +1,3 @@
-from abc import ABC
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -9,6 +8,11 @@ import torch
 
 @dataclass
 class DatasetConfig:
+    """
+    Class to determine the configurations for downstream datsets. Mirrors
+    the dataset configurations required for torch/transformers datasets.
+    """
+
     source_lines_path: str
     target_lines_path: str
     alignments_path: str
@@ -25,6 +29,11 @@ class DatasetConfig:
 
 @dataclass
 class DataLoaderConfig:
+    """
+    Class to determine the configurations for downstram data loaders. Mirrors
+    the configurations required for torch DataLoaders.
+    """
+
     collate_fn: Optional[Callable] = None  # collate_fn_span
     batch_size: int = 4
     num_workers: int = 0

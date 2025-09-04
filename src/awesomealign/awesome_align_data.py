@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Any
 
 import hanlp
 import hanlp.pretrained
@@ -12,6 +11,17 @@ from src.utils.decorators import timed_execution
 
 @dataclass
 class AwesomeAlignDataset:
+    """
+    Class to define a dataset for labelling by the AwesomeAlign model.
+
+    Init args:
+        data_path: path to which to find the raw dataset for labelling
+        context_sep: AwesomeAlign requires a specific context separator between source and target sentence i.e. " ||| ",
+        but this has been made adjustable in case the model is updated further
+        save: indicator to determine if the final dataset should be saved locally
+        save_path: determines the path to which the labelled dataset should be saved, if save=True
+    """
+
     data_path: str
     context_sep: str = " ||| "  # as prescribed in AwesomeAlign repo
     data: pd.DataFrame = field(default_factory=pd.DataFrame, init=False)
@@ -38,6 +48,19 @@ class AwesomeAlignDataset:
 
     @timed_execution
     def prepare_data(self, path: str, include_reverse: bool = True) -> pd.DataFrame:
+        """
+        Prepares dataset in the specific format as required by AwesomeAlign.
+
+        Args:
+            path: string path to read data from
+            include_reverse: indicator which determines if all source and target sentences are reversed in
+                             the dataset as well. If set to true, the function will process all sentences in
+                             the form of source ||| target, and then target ||| source. This is a form of data
+                             symmetrisation (as opposed to model symmetrisation).
+
+        Returns:
+            pd.DataFrame: the prepared dataset
+        """
         logger.info(f"Reading data from {path}...")
         if not path.endswith(".txt"):
             logger.error("TypeError: data file must be of type .txt")
@@ -72,17 +95,38 @@ class AwesomeAlignDataset:
 
         logger.success(f"Read data from {path}.")
 
-        return result_df
+        return result_df  # type: ignore
 
     def read_data(self, path: str) -> list[str]:
+        """
+        Reads raw dataset from a given path.
+
+        Args:
+            path: the path from which to read the dataset
+
+        Returns:
+            list[str]: the entire dataset of sentences, formatted as a list of strings
+        """
         with open(path, "r") as file:
             lines = file.readlines()
 
         return lines
 
     def combine_data(self, others: list[Self], override: bool = False) -> pd.DataFrame:
+        """
+        Combines multiple pepared AwesomeAlignDatasets into a single one.
+
+        Args:
+            others: other instances of AwesomeAlignDataset
+            override: indicator which determines if the class data attribute is overriden with the combined dataset.
+                      Set this to true if you want the dataset to be stored locally as well.
+
+        Returns:
+            pd.DataFrame: the combined dataset
+        """
         logger.info(
-            "Combining AwesomeAlignDataset(s) now, please ensure you are joining the correct datasets to avoid duplicate data..."
+            "Combining AwesomeAlignDataset(s) now, please ensure you are joining the correct datasets\
+                    to avoid duplicate data..."
         )
         all_dataframes = [self.data] + [other.data for other in others]
         combined_df = pd.concat(all_dataframes, axis=0)
@@ -92,7 +136,14 @@ class AwesomeAlignDataset:
 
         return combined_df
 
-    def save_data(self, data: Any, save_path: str) -> None:
+    def save_data(self, data: pd.DataFrame, save_path: str) -> None:
+        """
+        Saves dataset to a given save path. Will save as a csv file by default.
+
+        Args:
+            data: Pandas DataFrame to be saved
+            save_path: string path for saving
+        """
         data.to_csv(save_path)
 
 
